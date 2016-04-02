@@ -1,0 +1,4 @@
+apt-get install gcc -y
+add-apt-repository ppa:ben-collins/libjwt
+apt-get update && apt-get install libjwt-dev -y
+
