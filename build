@@ -1,0 +1,1 @@
+apxs -a -i -c auth_jwt.c -lz -ljwt
