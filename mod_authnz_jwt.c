@@ -5,12 +5,8 @@
 // RFC 7519 compliant library
 #include <jwt.h>
 
-
 #include "apr_strings.h"
 #include "apr_lib.h"                /* for apr_isspace */
-//#include "apr_base64.h"             /* for apr_base64_decode et al */
-//#define APR_WANT_STRFUNC            /* for strcasecmp */
-//#include "apr_want.h"
 
 #include "ap_config.h"
 #include "httpd.h"
@@ -121,7 +117,6 @@ static void *create_auth_jwt_dir_config(apr_pool_t *p, char *d){
 
     //conf->signature_algorithm = "HS256";
     conf->leeway = 0;
-
     conf->signature_algorithm_set = 0;
     conf->signature_secret_set = 0;
     conf->exp_delay_set = 0;
@@ -138,9 +133,8 @@ static void *create_auth_jwt_dir_config(apr_pool_t *p, char *d){
 static void *create_auth_jwt_config(apr_pool_t * p, server_rec *s){
     auth_jwt_config_rec *conf = (auth_jwt_config_rec*) apr_pcalloc(p, sizeof(*conf));
 
-    //conf->signature_algorithm = "HS256";
+    conf->signature_algorithm = "HS256";
     conf->leeway = 0;
-
     conf->signature_algorithm_set = 0;
     conf->signature_secret_set = 0;
     conf->exp_delay_set = 0;
@@ -164,6 +158,9 @@ AP_DECLARE_MODULE(auth_jwt) = {
   auth_jwt_cmds,
   register_hooks
 };
+
+
+/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  FILL OUT CONF STRUCTURES ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
 
 static void* get_config_value(request_rec *r, jwt_directive directive){
     auth_jwt_config_rec *dconf = (auth_jwt_config_rec *) ap_get_module_config(r->per_dir_config,
@@ -477,7 +474,7 @@ static int create_token(request_rec *r, char** token_str, const char* username){
     }else if(!strcmp(signature_algorithm, "HS256")){
         if(strlen(signature_secret)!=32){
             ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-                "The secret length must be 32 with HMAC SHA256 algorithm (current length is %d)", strlen(signature_secret));
+                "The secret length must be 32 with HMAC SHA256 algorithm (current length is %d)", (int)strlen(signature_secret));
             return HTTP_INTERNAL_SERVER_ERROR;
         }
         jwt_set_alg(token, JWT_ALG_HS256, (unsigned char*)signature_secret, 32);
@@ -647,7 +644,13 @@ static int auth_jwt_authn_with_token(request_rec *r){
 
     if(decode_res==0){
         if(OK == check_token(token)){
-            r->user = (char *)jwt_get_grant(token, "user");
+            char* maybe_user = (char *)jwt_get_grant(token, "user");
+            if(maybe_user == NULL){
+                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
+                  "User was not in token");
+                return HTTP_UNAUTHORIZED;
+            }
+            r->user = maybe_user;
             return OK;
         }else{
             return HTTP_UNAUTHORIZED;
