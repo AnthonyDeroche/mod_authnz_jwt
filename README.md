@@ -10,57 +10,57 @@ More on JWT : https://jwt.io/
 
 ## Documentation
 
-###Directives
+####Directives
 
-####AuthJWTProvider 
+#####AuthJWTProvider 
 
 * **Description**: Authentication providers used
 * **Context**: directory
 
-####AuthJWTSignatureAlgorithm 
+#####AuthJWTSignatureAlgorithm 
 
 * **Description**: The algorithm to use to sign tokens
-* **Context**: erver config, directory
+* **Context**: server config, directory
 * **Default**: HS256
 * **Possibles values**: HS256, HS384, HS512
 * **Mandatory**: yes
 
-####AuthJWTSignatureSecret 
+#####AuthJWTSignatureSecret 
 
 * **Description**: The secret to use to sign tokens with HMACs. Secret length must be respectively 32, 48, 64 for HS256, HS384, HS512.
-* **Context**: erver config, directory
+* **Context**: server config, directory
 * **Mandatory**: yes
 
-####AuthJWTIss
+#####AuthJWTIss
 * **Description**: The issuer of delievered tokens
-* **Context**: erver config, directory
+* **Context**: server config, directory
 * **Mandatory**: no
 
-####AuthJWTAud
+#####AuthJWTAud
 * **Description**: The audience of delivered tokens
-* **Context**: erver config, directory
+* **Context**: server config, directory
 * **Mandatory**: no
 
-####AuthJWTSub
+#####AuthJWTSub
 * **Description**: The subject of delivered tokens
-* **Context**: erver config, directory
+* **Context**: server config, directory
 * **Mandatory**: no
 
-####AuthJWTExpDelay 
+#####AuthJWTExpDelay 
 * **Description**: The time delay in seconds after which delivered tokens are considered invalid
-* **Context**: erver config, directory
+* **Context**: server config, directory
 * **Default**: 1800
 * **Mandatory**: no
 
-####AuthJWTNbfDelay 
+#####AuthJWTNbfDelay 
 * **Description**: The time delay in seconds before which delivered tokens must not be processed
-* **Context**: erver config, directory
+* **Context**: server config, directory
 * **Default**: 0
 * **Mandatory**: no
 
-####AuthJWTLeeway 
+#####AuthJWTLeeway 
 * **Description**: The leeway to account for clock skew in token validation process
-* **Context**: erver config, directory
+* **Context**: server config, directory
 * **Default**: 0
 * **Mandatory**: no
 
@@ -68,4 +68,4 @@ More on JWT : https://jwt.io/
 
 - Possibility to disable checks on exp, nbf, iss, aud, sub
 - Authorization based on token public fields
-
+- Merge confs
