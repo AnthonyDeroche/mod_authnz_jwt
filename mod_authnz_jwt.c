@@ -490,16 +490,15 @@ static int create_token(request_rec *r, char** token_str, const char* username){
     }
 
 
-    if(check_key_length(r, signature_secret, signature_algorithm)!=0){
+    if(check_key_length(r, signature_secret, signature_algorithm)!=OK){
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
     if(!strcmp(signature_algorithm, "HS512")){
         token_set_alg(token, JWT_ALG_HS512, (unsigned char*)signature_secret, 64);
     }else if(!strcmp(signature_algorithm, "HS384")){
-        token_set_alg(token, JWT_ALG_HS256, (unsigned char*)signature_secret, 32);
-    }
-    else if(!strcmp(signature_algorithm, "HS256")){
+        token_set_alg(token, JWT_ALG_HS256, (unsigned char*)signature_secret, 48);
+    }else if(!strcmp(signature_algorithm, "HS256")){
         token_set_alg(token, JWT_ALG_HS256, (unsigned char*)signature_secret, 32);
     }else{
         return HTTP_INTERNAL_SERVER_ERROR;
@@ -683,19 +682,19 @@ static int check_key_length(request_rec *r, const char* key, const char* algorit
         if(key_len!=64){
             ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
                 "The secret length must be 64 with HMAC SHA512 algorithm");
-            return 1;
+            return HTTP_INTERNAL_SERVER_ERROR;
         }
     }else if(!strcmp(algorithm, "HS384")){
         if(key_len!=32){
             ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
                 "The secret length must be 48 with HMAC SHA384 algorithm (current length is %d)", key_len);
-            return 1;
+            return HTTP_INTERNAL_SERVER_ERROR;
         }
     }else if(!strcmp(algorithm, "HS256")){
         if(key_len!=32){
             ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
                 "The secret length must be 32 with HMAC SHA256 algorithm (current length is %d)", key_len);
-            return 1;
+            return HTTP_INTERNAL_SERVER_ERROR;
         }
     }
     else{
@@ -703,7 +702,7 @@ static int check_key_length(request_rec *r, const char* key, const char* algorit
         "The only supported algorithms are HS256 (HMAC SHA256), HS384 (HMAC SHA384), and HS515 (HMAC SHA512)");
         return 2;
     }
-    return 0;
+    return OK;
 }
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  TOKEN OPERATIONS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
@@ -717,7 +716,7 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
     char* signature_secret = (char*)get_config_value(r, dir_signature_secret);
     char* signature_algorithm = (char *)get_config_value(r, dir_signature_algorithm);
 
-    if(check_key_length(r, key, signature_algorithm)!=0){
+    if(check_key_length(r, key, signature_algorithm)!=OK){
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
