@@ -96,7 +96,7 @@ static int create_token(request_rec *r, char** token_str, const char* username);
 
 static int auth_jwt_authn_with_token(request_rec *r);
 
-static int token_check(jwt_t **jwt, const char *token, const unsigned char *key, int key_len);
+static int token_check(request_rec *r, jwt_t **jwt, const char *token, const unsigned char *key, int key_len);
 static int token_new(jwt_t **jwt);
 static const char* token_get_claim(jwt_t *token, const char* claim);
 static int token_add_claim(jwt_t *jwt, const char *claim, const char *val);
@@ -116,7 +116,7 @@ static const command_rec auth_jwt_cmds[] =
                      "The secret to use to sign tokens with HMACs"),
    AP_INIT_TAKE1("AuthJWTIss", set_jwt_param, (void *)dir_iss, RSRC_CONF|ACCESS_CONF,
                      "The issuer of delievered tokens"),
-    AP_INIT_TAKE1("AuthJWTSub", set_jwt_param, (void *)dir_sub, RSRC_CONF|ACCESS_CONF,
+   AP_INIT_TAKE1("AuthJWTSub", set_jwt_param, (void *)dir_sub, RSRC_CONF|ACCESS_CONF,
                      "The subject of delivered tokens"),
    AP_INIT_TAKE1("AuthJWTAud", set_jwt_param, (void *)dir_aud, RSRC_CONF|ACCESS_CONF,
                      "The audience of delivered tokens"),
@@ -125,7 +125,7 @@ static const command_rec auth_jwt_cmds[] =
    AP_INIT_TAKE1("AuthJWTNbfDelay", set_jwt_int_param, (void *)dir_nbf_delay, RSRC_CONF|ACCESS_CONF,
                      "The time delay in seconds before which delivered tokens must not be processed"),
    AP_INIT_TAKE1("AuthJWTLeeway", set_jwt_int_param, (void *)dir_leeway, RSRC_CONF|ACCESS_CONF,
-                     "The leeway to account for clock skew in token validation process"),
+                     "The leeway to account for clock skew in token validation process"),           
    AP_INIT_ITERATE("AuthJWTProvider", add_authn_provider, NULL, ACCESS_CONF,
                 "Specify the auth providers for a directory or location"),
     {NULL}
@@ -139,8 +139,10 @@ static void *create_auth_jwt_dir_config(apr_pool_t *p, char *d){
     conf->dir = d;
     //conf->form_size = HUGE_STRING_LEN;
 
-    //conf->signature_algorithm = "HS256";
     conf->leeway = 0;
+    conf->exp_delay = 3600;
+    conf->nbf_delay = 0;
+
     conf->signature_algorithm_set = 0;
     conf->signature_secret_set = 0;
     conf->exp_delay_set = 0;
@@ -157,8 +159,6 @@ static void *create_auth_jwt_dir_config(apr_pool_t *p, char *d){
 static void *create_auth_jwt_config(apr_pool_t * p, server_rec *s){
     auth_jwt_config_rec *conf = (auth_jwt_config_rec*) apr_pcalloc(p, sizeof(*conf));
 
-    conf->signature_algorithm = "HS256";
-    conf->leeway = 0;
     conf->signature_algorithm_set = 0;
     conf->signature_secret_set = 0;
     conf->exp_delay_set = 0;
@@ -663,7 +663,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
         token_str = authorization_header+7;
         jwt_t* token;
 
-        if(OK == token_check(&token, token_str, signature_secret, strlen(signature_secret))){
+        if(OK == token_check(r, &token, token_str, signature_secret, strlen(signature_secret))){
             char* maybe_user = (char *)token_get_claim(token, "user");
             if(maybe_user == NULL){
                 ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
@@ -686,11 +686,13 @@ static int token_new(jwt_t **jwt){
   return jwt_new(jwt);
 }
 
-static int token_check(jwt_t **jwt, const char *token, const unsigned char *key, int key_len){
+static int token_check(request_rec *r, jwt_t **jwt, const char *token, const unsigned char *key, int key_len){
     int decode_res = jwt_decode(jwt, token, key, key_len);
 
-    if(decode_res != 0)
+    if(decode_res != 0){
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Decoding process has failed, token is not valid");
         return HTTP_UNAUTHORIZED;
+    }
 
     /*
     Trunk of libjwt does not need this check because the bug is fixed
@@ -699,9 +701,56 @@ static int token_check(jwt_t **jwt, const char *token, const unsigned char *key,
     if(*jwt &&  jwt_get_alg(*jwt) == JWT_ALG_NONE)
         return HTTP_UNAUTHORIZED;
 
+    const char* iss_config = (char *)get_config_value(r, dir_iss);
+    const char* aud_config = (char *)get_config_value(r, dir_aud);
+    const char* sub_config = (char *)get_config_value(r, dir_sub);
+    int leeway = *(int*)get_config_value(r, dir_leeway);
 
+    const char* iss_to_check = token_get_claim(*jwt, "iss");
+    if(iss_config && iss_to_check && strcmp(iss_config, iss_to_check)!=0){
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Token issuer does not match with configured issuer.");
+        return HTTP_UNAUTHORIZED;
+    }
 
+    const char* aud_to_check = token_get_claim(*jwt, "aud");
+    if(aud_config && aud_to_check && strcmp(aud_config, aud_to_check)!=0){
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Token audition does not match with configured audition.");
+        return HTTP_UNAUTHORIZED;
+    }
 
+    const char* sub_to_check = token_get_claim(*jwt, "sub");
+    if(sub_config && sub_to_check && strcmp(sub_config, sub_to_check)!=0){
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Token subject does not match with configured subject.");
+        return HTTP_UNAUTHORIZED;
+    }
+
+    /* check exp */
+    const char* exp_str = token_get_claim(*jwt, "exp");
+    if(exp_str){
+        int exp_int = atoi(exp_str);
+        time_t now = time(NULL);
+        if (exp_int + leeway < now){
+            /* token expired */
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Token expired.");
+            return HTTP_UNAUTHORIZED;
+        }
+    }else{
+        /* exp is mandatory parameter */
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Missing exp in token.");
+        return HTTP_UNAUTHORIZED;
+    }
+
+    /* check nbf */
+    const char* nbf_str = token_get_claim(*jwt, "nbf");
+    if(nbf_str){
+        int nbf_int = atoi(nbf_str);
+        time_t now = time(NULL);
+        if (nbf_int - leeway > now){
+            /* token is too recent to be processed */
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Nbf check failed. Token can't be processed now.");
+            return HTTP_UNAUTHORIZED;
+        }
+    }
 
     return OK;
 }
