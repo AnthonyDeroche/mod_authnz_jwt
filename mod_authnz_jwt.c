@@ -90,13 +90,14 @@ static const char *set_jwt_param(cmd_parms * cmd, void* config, const char* valu
 static const char *set_jwt_int_param(cmd_parms * cmd, void* config, const char* value);
 static void* get_config_value(request_rec *r, jwt_directive directive);
 
+static int check_key_length(request_rec *r, const char* key, const char* algorithm);
 static int auth_jwt_login_handler(request_rec *r);
 static int check_authn(request_rec *r, const char *username, const char *password);
 static int create_token(request_rec *r, char** token_str, const char* username);
 
 static int auth_jwt_authn_with_token(request_rec *r);
 
-static int token_check(request_rec *r, jwt_t **jwt, const char *token, const unsigned char *key, int key_len);
+static int token_check(request_rec *r, jwt_t **jwt, const char *token, const unsigned char *key);
 static int token_new(jwt_t **jwt);
 static const char* token_get_claim(jwt_t *token, const char* claim);
 static int token_add_claim(jwt_t *jwt, const char *claim, const char *val);
@@ -125,7 +126,7 @@ static const command_rec auth_jwt_cmds[] =
    AP_INIT_TAKE1("AuthJWTNbfDelay", set_jwt_int_param, (void *)dir_nbf_delay, RSRC_CONF|ACCESS_CONF,
                      "The time delay in seconds before which delivered tokens must not be processed"),
    AP_INIT_TAKE1("AuthJWTLeeway", set_jwt_int_param, (void *)dir_leeway, RSRC_CONF|ACCESS_CONF,
-                     "The leeway to account for clock skew in token validation process"),           
+                     "The leeway to account for clock skew in token validation process"),
    AP_INIT_ITERATE("AuthJWTProvider", add_authn_provider, NULL, ACCESS_CONF,
                 "Specify the auth providers for a directory or location"),
     {NULL}
@@ -488,24 +489,19 @@ static int create_token(request_rec *r, char** token_str, const char* username){
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
+
+    if(check_key_length(r, signature_secret, signature_algorithm)!=0){
+        return HTTP_INTERNAL_SERVER_ERROR;
+    }
+
     if(!strcmp(signature_algorithm, "HS512")){
-        if(strlen(signature_secret)!=64){
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-                "The secret length must be 64 with HMAC SHA512 algorithm");
-            return HTTP_INTERNAL_SERVER_ERROR;
-        }
         token_set_alg(token, JWT_ALG_HS512, (unsigned char*)signature_secret, 64);
-    }else if(!strcmp(signature_algorithm, "HS256")){
-        if(strlen(signature_secret)!=32){
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-                "The secret length must be 32 with HMAC SHA256 algorithm (current length is %d)", (int)strlen(signature_secret));
-            return HTTP_INTERNAL_SERVER_ERROR;
-        }
+    }else if(!strcmp(signature_algorithm, "HS384")){
         token_set_alg(token, JWT_ALG_HS256, (unsigned char*)signature_secret, 32);
     }
-    else{
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-        "The only supported algorithms are HS256 (HMAC SHA256) and HS515 (HMAC SHA512)");
+    else if(!strcmp(signature_algorithm, "HS256")){
+        token_set_alg(token, JWT_ALG_HS256, (unsigned char*)signature_secret, 32);
+    }else{
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
@@ -631,6 +627,7 @@ Authorization: Bearer json_web_token. Then we check if the token is valid.
 static int auth_jwt_authn_with_token(request_rec *r){
     const char *current_auth = NULL;
     current_auth = ap_auth_type(r);
+    int rv;
 
     if (!current_auth || strcmp(current_auth, "jwt")) {
         return DECLINED;
@@ -662,8 +659,8 @@ static int auth_jwt_authn_with_token(request_rec *r){
     if(header_len > 7 && !strncmp(authorization_header, "Bearer ", 7)){
         token_str = authorization_header+7;
         jwt_t* token;
-
-        if(OK == token_check(r, &token, token_str, signature_secret, strlen(signature_secret))){
+        rv = token_check(r, &token, token_str, signature_secret);
+        if(OK == rv){
             char* maybe_user = (char *)token_get_claim(token, "user");
             if(maybe_user == NULL){
                 ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
@@ -672,12 +669,41 @@ static int auth_jwt_authn_with_token(request_rec *r){
             }
             r->user = maybe_user;
             return OK;
-      }else{
-          return HTTP_UNAUTHORIZED;
-      }
+        }else{
+            return rv;
+        }
     }else{
         return HTTP_UNAUTHORIZED;
     }
+}
+
+static int check_key_length(request_rec *r, const char* key, const char* algorithm){
+    int key_len = (int)strlen(key);
+    if(!strcmp(algorithm, "HS512")){
+        if(key_len!=64){
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
+                "The secret length must be 64 with HMAC SHA512 algorithm");
+            return 1;
+        }
+    }else if(!strcmp(algorithm, "HS384")){
+        if(key_len!=32){
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
+                "The secret length must be 48 with HMAC SHA384 algorithm (current length is %d)", key_len);
+            return 1;
+        }
+    }else if(!strcmp(algorithm, "HS256")){
+        if(key_len!=32){
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
+                "The secret length must be 32 with HMAC SHA256 algorithm (current length is %d)", key_len);
+            return 1;
+        }
+    }
+    else{
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
+        "The only supported algorithms are HS256 (HMAC SHA256), HS384 (HMAC SHA384), and HS515 (HMAC SHA512)");
+        return 2;
+    }
+    return 0;
 }
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  TOKEN OPERATIONS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
@@ -686,8 +712,16 @@ static int token_new(jwt_t **jwt){
   return jwt_new(jwt);
 }
 
-static int token_check(request_rec *r, jwt_t **jwt, const char *token, const unsigned char *key, int key_len){
-    int decode_res = jwt_decode(jwt, token, key, key_len);
+static int token_check(request_rec *r, jwt_t **jwt, const char *token, const unsigned char *key){
+
+    char* signature_secret = (char*)get_config_value(r, dir_signature_secret);
+    char* signature_algorithm = (char *)get_config_value(r, dir_signature_algorithm);
+
+    if(check_key_length(r, key, signature_algorithm)!=0){
+        return HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    int decode_res = jwt_decode(jwt, token, key, strlen(key));
 
     if(decode_res != 0){
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Decoding process has failed, token is not valid");
