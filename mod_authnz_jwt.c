@@ -23,6 +23,7 @@
 #define JWT_LOGOUT_HANDLER "jwt-login-handler"
 #define USER_INDEX 0
 #define PASSWORD_INDEX 1
+#define FORM_SIZE 512
 
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  CONFIGURATION STRUCTURE ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
@@ -59,6 +60,7 @@ typedef struct {
 } auth_jwt_config_rec;
 
 typedef enum { dir_signature_algorithm, dir_signature_secret, dir_exp_delay, dir_nbf_delay, dir_iss, dir_sub, dir_aud, dir_leeway} jwt_directive;
+//typedef struct jwt_t token_t;
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  FUNCTIONS HEADERS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
 
@@ -77,8 +79,14 @@ static int check_authn(request_rec *r, const char *username, const char *passwor
 static int create_token(request_rec *r, char** token_str, const char* username);
 
 static int auth_jwt_authn_with_token(request_rec *r);
-static int check_token(jwt_t* token);
 
+static int token_check(jwt_t **jwt, const char *token, const unsigned char *key, int key_len);
+static int token_new(jwt_t **jwt);
+static const char* token_get_claim(jwt_t *token, const char* claim);
+static int token_add_claim(jwt_t *jwt, const char *claim, const char *val);
+static void token_free(jwt_t *token);
+static int token_set_alg(jwt_t *jwt, jwt_alg_t alg, unsigned char *key, int len);
+static char *token_encode_str(jwt_t *jwt);
 
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  DECLARE DIRECTIVES ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
@@ -392,7 +400,7 @@ static int auth_jwt_login_handler(request_rec *r){
   }
 
   apr_array_header_t *pairs = NULL;
-  res = ap_parse_form_data(r, NULL, &pairs, -1, 512);
+  res = ap_parse_form_data(r, NULL, &pairs, -1, FORM_SIZE);
   if (res != OK) {
     return res;
   }
@@ -442,7 +450,7 @@ static int auth_jwt_login_handler(request_rec *r){
 
 static int create_token(request_rec *r, char** token_str, const char* username){
     jwt_t *token;
-    int allocate = jwt_new(&token);
+    int allocate = token_new(&token);
 
     char* signature_secret = (char*)get_config_value(r, dir_signature_secret);
     char* signature_algorithm = (char *)get_config_value(r, dir_signature_algorithm);
@@ -470,14 +478,14 @@ static int create_token(request_rec *r, char** token_str, const char* username){
                 "The secret length must be 64 with HMAC SHA512 algorithm");
             return HTTP_INTERNAL_SERVER_ERROR;
         }
-        jwt_set_alg(token, JWT_ALG_HS512, (unsigned char*)signature_secret, 64);
+        token_set_alg(token, JWT_ALG_HS512, (unsigned char*)signature_secret, 64);
     }else if(!strcmp(signature_algorithm, "HS256")){
         if(strlen(signature_secret)!=32){
             ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
                 "The secret length must be 32 with HMAC SHA256 algorithm (current length is %d)", (int)strlen(signature_secret));
             return HTTP_INTERNAL_SERVER_ERROR;
         }
-        jwt_set_alg(token, JWT_ALG_HS256, (unsigned char*)signature_secret, 32);
+        token_set_alg(token, JWT_ALG_HS256, (unsigned char*)signature_secret, 32);
     }
     else{
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
@@ -494,34 +502,34 @@ static int create_token(request_rec *r, char** token_str, const char* username){
     if(exp_delay_ptr && *exp_delay_ptr >= 0){
         exp += *exp_delay_ptr;
         sprintf(time_buffer_str, "%ld", exp);
-        jwt_add_grant(token, "exp", time_buffer_str);
+        token_add_claim(token, "exp", time_buffer_str);
     }
 
     if(nbf_delay_ptr && *nbf_delay_ptr >= 0){
         nbf += *nbf_delay_ptr;
         sprintf(time_buffer_str, "%ld", nbf);
-        jwt_add_grant(token, "nbf", time_buffer_str);
+        token_add_claim(token, "nbf", time_buffer_str);
     }
 
     sprintf(time_buffer_str, "%ld", iat);
-    jwt_add_grant(token, "iat", time_buffer_str);
+    token_add_claim(token, "iat", time_buffer_str);
 
     if(iss){
-        jwt_add_grant(token, "iss", iss);
+        token_add_claim(token, "iss", iss);
     }
 
     if(sub){
-        jwt_add_grant(token, "sub", sub);
+        token_add_claim(token, "sub", sub);
     }
 
     if(aud){
-        jwt_add_grant(token, "aud", aud);
+        token_add_claim(token, "aud", aud);
     }
 
-    jwt_add_grant(token, "user", username);
+    token_add_claim(token, "user", username);
 
-    *token_str = jwt_encode_str(token);
-    jwt_free(token);
+    *token_str = token_encode_str(token);
+    token_free(token);
     return OK;
 }
 
@@ -599,52 +607,48 @@ static int check_authn(request_rec *r, const char *username, const char *passwor
 }
 
 
-
-
 /*
 If we are configured to handle authentication, let's look up headers to find
 whether or not 'Authorization' is set. If so, exepected format is
 Authorization: Bearer json_web_token. Then we check if the token is valid.
 */
 static int auth_jwt_authn_with_token(request_rec *r){
-  const char *current_auth = NULL;
-  current_auth = ap_auth_type(r);
+    const char *current_auth = NULL;
+    current_auth = ap_auth_type(r);
 
-  if (!current_auth || strcmp(current_auth, "jwt")) {
-      return DECLINED;
-  }
+    if (!current_auth || strcmp(current_auth, "jwt")) {
+        return DECLINED;
+    }
 
-  if (!ap_auth_name(r)) {
-       ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-                     "need AuthName: %s", r->uri);
-       return HTTP_INTERNAL_SERVER_ERROR;
-  }
+    if (!ap_auth_name(r)) {
+         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
+                       "need AuthName: %s", r->uri);
+         return HTTP_INTERNAL_SERVER_ERROR;
+    }
 
-  r->ap_auth_type = (char *) current_auth;
+    r->ap_auth_type = (char *) current_auth;
 
-  char* authorization_header = (char*)apr_table_get( r->headers_in, "Authorization");
-  char* token_str;
+    char* authorization_header = (char*)apr_table_get( r->headers_in, "Authorization");
+    char* token_str;
 
-  char* signature_secret = (char*)get_config_value(r, dir_signature_secret);
-  if(signature_secret == NULL){
-    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-                  "You must specify AuthJWTSignatureSecret directive in configuration");
-    return HTTP_INTERNAL_SERVER_ERROR;
-  }
+    char* signature_secret = (char*)get_config_value(r, dir_signature_secret);
+    if(signature_secret == NULL){
+      ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
+                    "You must specify AuthJWTSignatureSecret directive in configuration");
+      return HTTP_INTERNAL_SERVER_ERROR;
+    }
 
-  if(!authorization_header){
-    return HTTP_UNAUTHORIZED;
-  }
-  int decode_res;
-  int header_len = strlen(authorization_header);
-  if(header_len > 7 && !strncmp(authorization_header, "Bearer ", 7)){
-    token_str = authorization_header+7;
-    jwt_t* token;
-    decode_res = jwt_decode(&token, token_str, signature_secret, strlen(signature_secret));
+    if(!authorization_header){
+        return HTTP_UNAUTHORIZED;
+    }
 
-    if(decode_res==0){
-        if(OK == check_token(token)){
-            char* maybe_user = (char *)jwt_get_grant(token, "user");
+    int header_len = strlen(authorization_header);
+    if(header_len > 7 && !strncmp(authorization_header, "Bearer ", 7)){
+        token_str = authorization_header+7;
+        jwt_t* token;
+
+        if(OK == token_check(&token, token_str, signature_secret, strlen(signature_secret))){
+            char* maybe_user = (char *)token_get_claim(token, "user");
             if(maybe_user == NULL){
                 ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
                   "User was not in token");
@@ -652,17 +656,56 @@ static int auth_jwt_authn_with_token(request_rec *r){
             }
             r->user = maybe_user;
             return OK;
-        }else{
-            return HTTP_UNAUTHORIZED;
-        }
+      }else{
+          return HTTP_UNAUTHORIZED;
+      }
     }else{
-      return HTTP_UNAUTHORIZED;
+        return HTTP_UNAUTHORIZED;
     }
-  }else{
-    return HTTP_UNAUTHORIZED;
-  }
 }
 
-static int check_token(jwt_t* token){
+/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  TOKEN OPERATIONS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
+
+static int token_new(jwt_t **jwt){
+  return jwt_new(jwt);
+}
+
+static int token_check(jwt_t **jwt, const char *token, const unsigned char *key, int key_len){
+    int decode_res = jwt_decode(jwt, token, key, key_len);
+
+    if(decode_res != 0)
+        return HTTP_UNAUTHORIZED;
+
+    /*
+    Trunk of libjwt does not need this check because the bug is fixed
+    We should not accept token with provided alg none
+    */
+    if(*jwt &&  jwt_get_alg(*jwt) == JWT_ALG_NONE)
+        return HTTP_UNAUTHORIZED;
+
+
+
+
+
     return OK;
+}
+
+static char *token_encode_str(jwt_t *jwt){
+    return jwt_encode_str(jwt);
+}
+
+static int token_add_claim(jwt_t *jwt, const char *claim, const char *val){
+    return jwt_add_grant(jwt, claim, val);
+}
+
+static const char* token_get_claim(jwt_t *token, const char* claim){
+    return jwt_get_grant(token, claim);
+}
+
+static int token_set_alg(jwt_t *jwt, jwt_alg_t alg, unsigned char *key, int len){
+    return jwt_set_alg(jwt, alg, key, len);
+}
+
+static void token_free(jwt_t *token){
+    jwt_free(token);
 }
