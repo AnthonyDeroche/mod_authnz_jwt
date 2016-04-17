@@ -399,15 +399,15 @@ static const char *set_jwt_int_param(cmd_parms * cmd, void* config, const char* 
 
 static int auth_jwt_login_handler(request_rec *r){
 
+  if(!r->handler || strcmp(r->handler, JWT_LOGIN_HANDLER)){
+    return DECLINED;
+  }
+
   int res;
   char* buffer;
   apr_off_t len;
   apr_size_t size;
   int rv;
-
-  if(!r->handler || strcmp(r->handler, JWT_LOGIN_HANDLER)){
-    return DECLINED;
-  }
 
   if(r->method_number != M_POST){
     ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01811)
@@ -456,7 +456,8 @@ static int auth_jwt_login_handler(request_rec *r){
     char* token;
     rv = create_token(r, &token, sent_values[USER_INDEX]);
     if(rv == OK){
-      ap_rprintf(r, "%s ", token);
+      apr_table_add(r->headers_out, "Content-Type", "application/json");
+      ap_rprintf(r, "{\"token\":\"%s\"}", token);
       free(token);
     }
   }
@@ -588,9 +589,9 @@ static int check_authn(request_rec *r, const char *username, const char *passwor
     if (authn_result != AUTH_GRANTED) {
         int return_code;
 
-        if (authn_result != AUTH_DENIED) { //&& !(conf->authoritative)
+        /*if (authn_result != AUTH_DENIED) && !(conf->authoritative))
             return DECLINED;
-        }
+        }*/
 
         switch (authn_result) {
           case AUTH_DENIED:
