@@ -274,6 +274,7 @@ static void* get_config_value(request_rec *r, jwt_directive directive){
     return value;
 }
 
+
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  REGISTER HOOKS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
 
 static void register_hooks(apr_pool_t * p){
@@ -456,7 +457,7 @@ static int auth_jwt_login_handler(request_rec *r){
     char* token;
     rv = create_token(r, &token, sent_values[USER_INDEX]);
     if(rv == OK){
-      apr_table_add(r->headers_out, "Content-Type", "application/json");
+      apr_table_setn(r->err_headers_out, "Content-Type", "application/json");
       ap_rprintf(r, "{\"token\":\"%s\"}", token);
       free(token);
     }
@@ -633,6 +634,13 @@ static int auth_jwt_authn_with_token(request_rec *r){
         return DECLINED;
     }
 
+    /* We need an authentication realm. */
+    if (!ap_auth_name(r)) {
+       ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
+                     "need AuthName: %s", r->uri);
+       return HTTP_INTERNAL_SERVER_ERROR;
+    }
+
     if (!ap_auth_name(r)) {
          ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
                        "need AuthName: %s", r->uri);
@@ -652,6 +660,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
     }
 
     if(!authorization_header){
+        apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool, "Bearer realm=\"", ap_auth_name(r),"\"", NULL));
         return HTTP_UNAUTHORIZED;
     }
 
@@ -664,7 +673,10 @@ static int auth_jwt_authn_with_token(request_rec *r){
             char* maybe_user = (char *)token_get_claim(token, "user");
             if(maybe_user == NULL){
                 ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-                  "User was not in token");
+                  "Username was not in token");
+                apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
+                  "Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Username was not in token\"",
+                   NULL));
                 return HTTP_UNAUTHORIZED;
             }
             r->user = maybe_user;
@@ -673,7 +685,10 @@ static int auth_jwt_authn_with_token(request_rec *r){
             return rv;
         }
     }else{
-        return HTTP_UNAUTHORIZED;
+        apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
+          "Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_request\", error_description=\"Authentication type must be Bearer\"",
+           NULL));
+        return HTTP_BAD_REQUEST;
     }
 }
 
@@ -724,7 +739,10 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
     int decode_res = jwt_decode(jwt, token, key, strlen(key));
 
     if(decode_res != 0){
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Decoding process has failed, token is not valid");
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Decoding process has failed, token is malformed");
+        apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
+          "Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Token is malformed\"",
+           NULL));
         return HTTP_UNAUTHORIZED;
     }
 
@@ -732,8 +750,12 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
     Trunk of libjwt does not need this check because the bug is fixed
     We should not accept token with provided alg none
     */
-    if(*jwt &&  jwt_get_alg(*jwt) == JWT_ALG_NONE)
+    if(*jwt &&  jwt_get_alg(*jwt) == JWT_ALG_NONE){
+        apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
+          "Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Token is malformed\"",
+           NULL));
         return HTTP_UNAUTHORIZED;
+    }
 
     const char* iss_config = (char *)get_config_value(r, dir_iss);
     const char* aud_config = (char *)get_config_value(r, dir_aud);
@@ -743,18 +765,27 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
     const char* iss_to_check = token_get_claim(*jwt, "iss");
     if(iss_config && iss_to_check && strcmp(iss_config, iss_to_check)!=0){
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Token issuer does not match with configured issuer.");
+        apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
+          "Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Issuer is not valid\"",
+           NULL));
         return HTTP_UNAUTHORIZED;
     }
 
     const char* aud_to_check = token_get_claim(*jwt, "aud");
     if(aud_config && aud_to_check && strcmp(aud_config, aud_to_check)!=0){
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Token audition does not match with configured audition.");
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Token audience does not match with configured audience.");
+        apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
+          "Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Audience is not valid\"",
+           NULL));
         return HTTP_UNAUTHORIZED;
     }
 
     const char* sub_to_check = token_get_claim(*jwt, "sub");
     if(sub_config && sub_to_check && strcmp(sub_config, sub_to_check)!=0){
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Token subject does not match with configured subject.");
+        apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
+          "Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Subject is not valid\"",
+           NULL));
         return HTTP_UNAUTHORIZED;
     }
 
@@ -766,11 +797,17 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
         if (exp_int + leeway < now){
             /* token expired */
             ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Token expired.");
+            apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
+              "Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Token expired\"",
+               NULL));
             return HTTP_UNAUTHORIZED;
         }
     }else{
         /* exp is mandatory parameter */
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Missing exp in token.");
+        apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
+          "Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Expiration is missing in token\"",
+           NULL));
         return HTTP_UNAUTHORIZED;
     }
 
@@ -782,6 +819,9 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
         if (nbf_int - leeway > now){
             /* token is too recent to be processed */
             ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Nbf check failed. Token can't be processed now.");
+            apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
+              "Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Token can't be processed now due to nbf field\"",
+               NULL));
             return HTTP_UNAUTHORIZED;
         }
     }
