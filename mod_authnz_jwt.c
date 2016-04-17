@@ -684,6 +684,9 @@ static int auth_jwt_authn_with_token(request_rec *r){
         }else{
             return rv;
         }
+
+        if(token)
+            token_free(token);
     }else{
         apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
           "Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_request\", error_description=\"Authentication type must be Bearer\"",
@@ -825,7 +828,6 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
             return HTTP_UNAUTHORIZED;
         }
     }
-
     return OK;
 }
 
