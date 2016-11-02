@@ -14,7 +14,7 @@ Note that this module does not support asymetric algorithms such as RSA or DSA t
 
 ## Build Requirements
 
-- libjwt (https://github.com/benmcollins/libjwt)
+- libjwt v1.3.1 (https://github.com/benmcollins/libjwt)
 - Apache development package (apache2-dev on Debian/Ubuntu and httpd-devel on CentOS/Fedora)
 
 ## Documentation
@@ -73,8 +73,41 @@ Note that this module does not support asymetric algorithms such as RSA or DSA t
 * **Default**: 0
 * **Mandatory**: no
 
-## TODO
+## Configuration example
 
+~~~~
+<VirtualHost *:80>
+	ServerName deroche.me
+	DocumentRoot /var/www/html/
+	
+	AuthJWTSignatureAlgorithm HS256
+	AuthJWTSignatureSecret CHANGEME--32--characters--secret
+	AuthJWTExpDelay 1800
+	AuthJWTNbfDelay 0
+	AuthJWTIss deroche.me
+	AuthJWTSub jwt-demo
+	AuthJWTLeeway 10
+
+	<Directory /var/www/html/demo/secured/>
+		AllowOverride None
+		AuthType jwt
+		AuthName "private area"
+		Require valid-user
+	</Directory>
+	
+	
+	<Location /demo/login>
+		SetHandler jwt-login-handler
+		AuthJWTProvider file
+		AuthUserFile /var/www/jwt.htpasswd
+	</Location>
+
+	ErrorLog ${APACHE_LOG_DIR}/error.log
+	CustomLog ${APACHE_LOG_DIR}/access.log combined
+</VirtualHost>		
+~~~~
+## TODO
+- Adapt code to last version of libjwt
 - Possibility to disable checks on exp, nbf, iss, aud, sub
 - Authorization based on token public fields
 - Merge confs
