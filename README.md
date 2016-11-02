@@ -106,6 +106,11 @@ Note that this module does not support asymetric algorithms such as RSA or DSA t
 	CustomLog ${APACHE_LOG_DIR}/access.log combined
 </VirtualHost>		
 ~~~~
+
+## Demo
+
+https://deroche.me/demo/jwt.php
+
 ## TODO
 - Adapt code to last version of libjwt
 - Possibility to disable checks on exp, nbf, iss, aud, sub
