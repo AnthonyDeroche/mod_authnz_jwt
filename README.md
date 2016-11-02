@@ -108,8 +108,7 @@ Note that this module does not support asymetric algorithms such as RSA or DSA t
 ~~~~
 
 ## Demo
-
-https://deroche.me/demo/jwt.php
+<a href="https://anthony.deroche.me/demo/jwt.php" target="_blank">https://anthony.deroche.me/demo/jwt.php</a>
 
 ## TODO
 - Adapt code to last version of libjwt
