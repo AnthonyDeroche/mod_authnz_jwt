@@ -50,8 +50,8 @@ typedef struct {
     const char* signature_algorithm;
     int signature_algorithm_set;
 
-    const char* signature_secret;
-    int signature_secret_set;
+    const char* signature_key;
+    int signature_key_set;
 
     int exp_delay;
     int exp_delay_set;
@@ -75,7 +75,7 @@ typedef struct {
 
 } auth_jwt_config_rec;
 
-typedef enum { dir_signature_algorithm, dir_signature_secret, dir_exp_delay, dir_nbf_delay, dir_iss, dir_sub, dir_aud, dir_leeway} jwt_directive;
+typedef enum { dir_signature_algorithm, dir_signature_key, dir_exp_delay, dir_nbf_delay, dir_iss, dir_sub, dir_aud, dir_leeway} jwt_directive;
 //typedef struct jwt_t token_t;
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  FUNCTIONS HEADERS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
@@ -90,7 +90,6 @@ static const char *set_jwt_param(cmd_parms * cmd, void* config, const char* valu
 static const char *set_jwt_int_param(cmd_parms * cmd, void* config, const char* value);
 static void* get_config_value(request_rec *r, jwt_directive directive);
 
-static int check_key_length(request_rec *r, const char* key, const char* algorithm);
 static int auth_jwt_login_handler(request_rec *r);
 static int check_authn(request_rec *r, const char *username, const char *password);
 static int create_token(request_rec *r, char** token_str, const char* username);
@@ -102,7 +101,7 @@ static int token_new(jwt_t **jwt);
 static const char* token_get_claim(jwt_t *token, const char* claim);
 static int token_add_claim(jwt_t *jwt, const char *claim, const char *val);
 static void token_free(jwt_t *token);
-static int token_set_alg(jwt_t *jwt, jwt_alg_t alg, unsigned char *key, int len);
+static int token_set_alg(jwt_t *jwt, jwt_alg_t alg, unsigned char *key);
 static char *token_encode_str(jwt_t *jwt);
 
 
@@ -113,7 +112,7 @@ static const command_rec auth_jwt_cmds[] =
 
    AP_INIT_TAKE1("AuthJWTSignatureAlgorithm", set_jwt_param, (void *)dir_signature_algorithm, RSRC_CONF|ACCESS_CONF,
                     "The algorithm to use to sign tokens"),
-   AP_INIT_TAKE1("AuthJWTSignatureSecret", set_jwt_param, (void *)dir_signature_secret, RSRC_CONF|ACCESS_CONF,
+   AP_INIT_TAKE1("AuthJWTSignatureKey", set_jwt_param, (void *)dir_signature_key, RSRC_CONF|ACCESS_CONF,
                      "The secret to use to sign tokens with HMACs"),
    AP_INIT_TAKE1("AuthJWTIss", set_jwt_param, (void *)dir_iss, RSRC_CONF|ACCESS_CONF,
                      "The issuer of delievered tokens"),
@@ -145,7 +144,7 @@ static void *create_auth_jwt_dir_config(apr_pool_t *p, char *d){
     conf->nbf_delay = 0;
 
     conf->signature_algorithm_set = 0;
-    conf->signature_secret_set = 0;
+    conf->signature_key_set = 0;
     conf->exp_delay_set = 0;
     conf->nbf_delay_set = 0;
     conf->leeway_set = 0;
@@ -161,7 +160,7 @@ static void *create_auth_jwt_config(apr_pool_t * p, server_rec *s){
     auth_jwt_config_rec *conf = (auth_jwt_config_rec*) apr_pcalloc(p, sizeof(*conf));
 
     conf->signature_algorithm_set = 0;
-    conf->signature_secret_set = 0;
+    conf->signature_key_set = 0;
     conf->exp_delay_set = 0;
     conf->nbf_delay_set = 0;
     conf->leeway_set = 0;
@@ -205,11 +204,11 @@ static void* get_config_value(request_rec *r, jwt_directive directive){
                 return NULL;
             }
             break;
-        case dir_signature_secret:
-            if(dconf->signature_secret_set && dconf->signature_secret){
-                value = (void*)dconf->signature_secret;
-            }else if(sconf->signature_algorithm_set && sconf->signature_secret){
-                value = (void*)sconf->signature_secret;
+        case dir_signature_key:
+            if(dconf->signature_key_set && dconf->signature_key){
+                value = (void*)dconf->signature_key;
+            }else if(sconf->signature_algorithm_set && sconf->signature_key){
+                value = (void*)sconf->signature_key;
             }else{
                 return NULL;
             }
@@ -340,9 +339,9 @@ static const char *set_jwt_param(cmd_parms * cmd, void* config, const char* valu
             conf->signature_algorithm = value;
             conf->signature_algorithm_set = 1;
         break;
-        case dir_signature_secret:
-            conf->signature_secret = value;
-            conf->signature_secret_set = 1;
+        case dir_signature_key:
+            conf->signature_key = value;
+            conf->signature_key_set = 1;
         break;
         case dir_iss:
             conf->iss = value;
@@ -471,7 +470,7 @@ static int create_token(request_rec *r, char** token_str, const char* username){
     jwt_t *token;
     int allocate = token_new(&token);
 
-    char* signature_secret = (char*)get_config_value(r, dir_signature_secret);
+    char* signature_key = (char*)get_config_value(r, dir_signature_key);
     char* signature_algorithm = (char *)get_config_value(r, dir_signature_algorithm);
     char* iss = (char *)get_config_value(r, dir_iss);
     char* aud = (char *)get_config_value(r, dir_aud);
@@ -479,9 +478,9 @@ static int create_token(request_rec *r, char** token_str, const char* username){
     int* exp_delay_ptr = (int*)get_config_value(r, dir_exp_delay);
     int* nbf_delay_ptr = (int*)get_config_value(r, dir_nbf_delay);
 
-    if(!signature_secret){
+    if(!signature_key){
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-                      "You must specify AuthJWTSignatureSecret directive in configuration");
+                      "You must specify AuthJWTSignatureKey directive in configuration");
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
@@ -492,16 +491,12 @@ static int create_token(request_rec *r, char** token_str, const char* username){
     }
 
 
-    if(check_key_length(r, signature_secret, signature_algorithm)!=OK){
-        return HTTP_INTERNAL_SERVER_ERROR;
-    }
-
     if(!strcmp(signature_algorithm, "HS512")){
-        token_set_alg(token, JWT_ALG_HS512, (unsigned char*)signature_secret, 64);
+        token_set_alg(token, JWT_ALG_HS512, (unsigned char*)signature_key);
     }else if(!strcmp(signature_algorithm, "HS384")){
-        token_set_alg(token, JWT_ALG_HS256, (unsigned char*)signature_secret, 48);
+        token_set_alg(token, JWT_ALG_HS256, (unsigned char*)signature_key);
     }else if(!strcmp(signature_algorithm, "HS256")){
-        token_set_alg(token, JWT_ALG_HS256, (unsigned char*)signature_secret, 32);
+        token_set_alg(token, JWT_ALG_HS256, (unsigned char*)signature_key);
     }else{
         return HTTP_INTERNAL_SERVER_ERROR;
     }
@@ -652,10 +647,10 @@ static int auth_jwt_authn_with_token(request_rec *r){
     char* authorization_header = (char*)apr_table_get( r->headers_in, "Authorization");
     char* token_str;
 
-    char* signature_secret = (char*)get_config_value(r, dir_signature_secret);
-    if(signature_secret == NULL){
+    char* signature_key = (char*)get_config_value(r, dir_signature_key);
+    if(signature_key == NULL){
       ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-                    "You must specify AuthJWTSignatureSecret directive in configuration");
+                    "You must specify AuthJWTSignatureKey directive in configuration");
       return HTTP_INTERNAL_SERVER_ERROR;
     }
 
@@ -668,7 +663,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
     if(header_len > 7 && !strncmp(authorization_header, "Bearer ", 7)){
         token_str = authorization_header+7;
         jwt_t* token;
-        rv = token_check(r, &token, token_str, signature_secret);
+        rv = token_check(r, &token, token_str, signature_key);
         if(OK == rv){
             char* maybe_user = (char *)token_get_claim(token, "user");
             if(maybe_user == NULL){
@@ -695,34 +690,6 @@ static int auth_jwt_authn_with_token(request_rec *r){
     }
 }
 
-static int check_key_length(request_rec *r, const char* key, const char* algorithm){
-    int key_len = (int)strlen(key);
-    if(!strcmp(algorithm, "HS512")){
-        if(key_len!=64){
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-                "The secret length must be 64 with HMAC SHA512 algorithm");
-            return HTTP_INTERNAL_SERVER_ERROR;
-        }
-    }else if(!strcmp(algorithm, "HS384")){
-        if(key_len!=32){
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-                "The secret length must be 48 with HMAC SHA384 algorithm (current length is %d)", key_len);
-            return HTTP_INTERNAL_SERVER_ERROR;
-        }
-    }else if(!strcmp(algorithm, "HS256")){
-        if(key_len!=32){
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-                "The secret length must be 32 with HMAC SHA256 algorithm (current length is %d)", key_len);
-            return HTTP_INTERNAL_SERVER_ERROR;
-        }
-    }
-    else{
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-        "The only supported algorithms are HS256 (HMAC SHA256), HS384 (HMAC SHA384), and HS515 (HMAC SHA512)");
-        return 2;
-    }
-    return OK;
-}
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  TOKEN OPERATIONS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
 
@@ -732,12 +699,8 @@ static int token_new(jwt_t **jwt){
 
 static int token_check(request_rec *r, jwt_t **jwt, const char *token, const unsigned char *key){
 
-    char* signature_secret = (char*)get_config_value(r, dir_signature_secret);
+    char* signature_key = (char*)get_config_value(r, dir_signature_key);
     char* signature_algorithm = (char *)get_config_value(r, dir_signature_algorithm);
-
-    if(check_key_length(r, key, signature_algorithm)!=OK){
-        return HTTP_INTERNAL_SERVER_ERROR;
-    }
 
     int decode_res = jwt_decode(jwt, token, key, strlen(key));
 
@@ -843,8 +806,8 @@ static const char* token_get_claim(jwt_t *token, const char* claim){
     return jwt_get_grant(token, claim);
 }
 
-static int token_set_alg(jwt_t *jwt, jwt_alg_t alg, unsigned char *key, int len){
-    return jwt_set_alg(jwt, alg, key, len);
+static int token_set_alg(jwt_t *jwt, jwt_alg_t alg, unsigned char *key){
+    return jwt_set_alg(jwt, alg, key, strlen(key));
 }
 
 static void token_free(jwt_t *token){
