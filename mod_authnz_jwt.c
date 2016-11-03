@@ -19,7 +19,7 @@
 #include <stdlib.h>
 
 // RFC 7519 compliant library
-#include <jwt.h>
+#include "jwt.h"
 
 #include "apr_strings.h"
 #include "apr_lib.h"                /* for apr_isspace */
