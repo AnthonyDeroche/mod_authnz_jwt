@@ -9,7 +9,7 @@ install: mod_authnz_jwt.la
 build: mod_authnz_jwt.la
 
 mod_authnz_jwt.la: mod_authnz_jwt.c
-	$(APXS) -L/usr/local/lib -I/usr/local/include/jwt -ljwt -lz -c mod_authnz_jwt.c
+	$(APXS) -L/usr/local/lib -I/usr/local/include/jwt -ljwt -lz -c mod_authnz_jwt.c -Werror
 
 clean:
 	rm -rf mod_authnz_jwt.so mod_authnz_jwt.o \

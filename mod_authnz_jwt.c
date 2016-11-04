@@ -40,6 +40,7 @@
 #define USER_INDEX 0
 #define PASSWORD_INDEX 1
 #define FORM_SIZE 512
+#define MAX_KEY_LEN 16384
 
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  CONFIGURATION STRUCTURE ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
@@ -50,8 +51,14 @@ typedef struct {
     const char* signature_algorithm;
     int signature_algorithm_set;
 
-    const char* signature_key;
-    int signature_key_set;
+    const char* signature_shared_secret;
+    int signature_shared_secret_set;
+
+    const char* signature_public_key_file;
+    int signature_public_key_file_set;
+
+    const char* signature_private_key_file;
+    int signature_private_key_file_set;
 
     int exp_delay;
     int exp_delay_set;
@@ -75,8 +82,17 @@ typedef struct {
 
 } auth_jwt_config_rec;
 
-typedef enum { dir_signature_algorithm, dir_signature_key, dir_exp_delay, dir_nbf_delay, dir_iss, dir_sub, dir_aud, dir_leeway} jwt_directive;
-//typedef struct jwt_t token_t;
+typedef enum { 
+	dir_signature_algorithm, 
+	dir_signature_shared_secret, 
+	dir_signature_public_key_file,
+	dir_signature_private_key_file,
+	dir_exp_delay, 
+	dir_nbf_delay, 
+	dir_iss, dir_sub, 
+	dir_aud, 
+	dir_leeway
+} jwt_directive;
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  FUNCTIONS HEADERS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
 
@@ -96,12 +112,15 @@ static int create_token(request_rec *r, char** token_str, const char* username);
 
 static int auth_jwt_authn_with_token(request_rec *r);
 
+static void get_encode_key(request_rec* r, const char* algorithm, unsigned char* key);
+static void get_decode_key(request_rec* r, const char* algorithm, unsigned char* key);
 static int token_check(request_rec *r, jwt_t **jwt, const char *token, const unsigned char *key);
+static int token_decode(jwt_t **jwt, const char* token, const unsigned char *key);
 static int token_new(jwt_t **jwt);
 static const char* token_get_claim(jwt_t *token, const char* claim);
 static int token_add_claim(jwt_t *jwt, const char *claim, const char *val);
 static void token_free(jwt_t *token);
-static int token_set_alg(jwt_t *jwt, jwt_alg_t alg, unsigned char *key);
+static int token_set_alg(jwt_t *jwt, jwt_alg_t alg, const unsigned char *key);
 static char *token_encode_str(jwt_t *jwt);
 
 
@@ -112,8 +131,12 @@ static const command_rec auth_jwt_cmds[] =
 
    AP_INIT_TAKE1("AuthJWTSignatureAlgorithm", set_jwt_param, (void *)dir_signature_algorithm, RSRC_CONF|ACCESS_CONF,
                     "The algorithm to use to sign tokens"),
-   AP_INIT_TAKE1("AuthJWTSignatureKey", set_jwt_param, (void *)dir_signature_key, RSRC_CONF|ACCESS_CONF,
-                     "The secret to use to sign tokens with HMACs"),
+   AP_INIT_TAKE1("AuthJWTSignatureSharedSecret", set_jwt_param, (void *)dir_signature_shared_secret, RSRC_CONF|ACCESS_CONF,
+                     "The shared secret to use to sign tokens with HMACs"),
+   AP_INIT_TAKE1("AuthJWTSignaturePublicKeyFile", set_jwt_param, (void *)dir_signature_public_key_file, RSRC_CONF|ACCESS_CONF,
+                     "The file containing public key used to check signatures"),
+   AP_INIT_TAKE1("AuthJWTSignaturePrivateKeyFile", set_jwt_param, (void *)dir_signature_private_key_file, RSRC_CONF|ACCESS_CONF,
+                     "The file containing private key used to sign tokens"),
    AP_INIT_TAKE1("AuthJWTIss", set_jwt_param, (void *)dir_iss, RSRC_CONF|ACCESS_CONF,
                      "The issuer of delievered tokens"),
    AP_INIT_TAKE1("AuthJWTSub", set_jwt_param, (void *)dir_sub, RSRC_CONF|ACCESS_CONF,
@@ -144,7 +167,9 @@ static void *create_auth_jwt_dir_config(apr_pool_t *p, char *d){
     conf->nbf_delay = 0;
 
     conf->signature_algorithm_set = 0;
-    conf->signature_key_set = 0;
+    conf->signature_shared_secret_set = 0;
+	conf->signature_public_key_file_set = 0;
+	conf->signature_private_key_file_set = 0;
     conf->exp_delay_set = 0;
     conf->nbf_delay_set = 0;
     conf->leeway_set = 0;
@@ -160,7 +185,9 @@ static void *create_auth_jwt_config(apr_pool_t * p, server_rec *s){
     auth_jwt_config_rec *conf = (auth_jwt_config_rec*) apr_pcalloc(p, sizeof(*conf));
 
     conf->signature_algorithm_set = 0;
-    conf->signature_key_set = 0;
+    conf->signature_shared_secret_set = 0;
+	conf->signature_public_key_file_set = 0;
+	conf->signature_private_key_file_set = 0;
     conf->exp_delay_set = 0;
     conf->nbf_delay_set = 0;
     conf->leeway_set = 0;
@@ -204,11 +231,29 @@ static void* get_config_value(request_rec *r, jwt_directive directive){
                 return NULL;
             }
             break;
-        case dir_signature_key:
-            if(dconf->signature_key_set && dconf->signature_key){
-                value = (void*)dconf->signature_key;
-            }else if(sconf->signature_algorithm_set && sconf->signature_key){
-                value = (void*)sconf->signature_key;
+        case dir_signature_shared_secret:
+            if(dconf->signature_shared_secret_set && dconf->signature_shared_secret){
+                value = (void*)dconf->signature_shared_secret;
+            }else if(sconf->signature_shared_secret_set && sconf->signature_shared_secret){
+                value = (void*)sconf->signature_shared_secret;
+            }else{
+                return NULL;
+            }
+            break;
+		case dir_signature_public_key_file:
+            if(dconf->signature_public_key_file_set && dconf->signature_public_key_file){
+                value = (void*)dconf->signature_public_key_file;
+            }else if(sconf->signature_public_key_file_set && sconf->signature_public_key_file){
+                value = (void*)sconf->signature_public_key_file;
+            }else{
+                return NULL;
+            }
+            break;
+		case dir_signature_private_key_file:
+            if(dconf->signature_private_key_file_set && dconf->signature_private_key_file){
+                value = (void*)dconf->signature_private_key_file;
+            }else if(sconf->signature_private_key_file_set && sconf->signature_private_key_file){
+                value = (void*)sconf->signature_private_key_file;
             }else{
                 return NULL;
             }
@@ -339,10 +384,18 @@ static const char *set_jwt_param(cmd_parms * cmd, void* config, const char* valu
             conf->signature_algorithm = value;
             conf->signature_algorithm_set = 1;
         break;
-        case dir_signature_key:
-            conf->signature_key = value;
-            conf->signature_key_set = 1;
+        case dir_signature_shared_secret:
+            conf->signature_shared_secret = value;
+            conf->signature_shared_secret_set = 1;
         break;
+		case dir_signature_public_key_file:
+			conf->signature_public_key_file = value;
+			conf->signature_public_key_file_set = 1;
+		break;
+		case dir_signature_private_key_file:
+			conf->signature_private_key_file = value;
+			conf->signature_private_key_file_set = 1;
+		break;
         case dir_iss:
             conf->iss = value;
             conf->iss_set = 1;
@@ -469,37 +522,51 @@ static int auth_jwt_login_handler(request_rec *r){
 static int create_token(request_rec *r, char** token_str, const char* username){
     jwt_t *token;
     int allocate = token_new(&token);
-
-    char* signature_key = (char*)get_config_value(r, dir_signature_key);
+	if(allocate!=0){
+		//TODO handle errno
+	}
+    
     char* signature_algorithm = (char *)get_config_value(r, dir_signature_algorithm);
+	unsigned char sign_key[MAX_KEY_LEN] = { 0 };
+	get_encode_key(r, signature_algorithm, sign_key);
+
+	if(strlen((const char*)sign_key) == 0){
+		return HTTP_INTERNAL_SERVER_ERROR;
+	}
+
     char* iss = (char *)get_config_value(r, dir_iss);
     char* aud = (char *)get_config_value(r, dir_aud);
     char* sub = (char *)get_config_value(r, dir_sub);
     int* exp_delay_ptr = (int*)get_config_value(r, dir_exp_delay);
     int* nbf_delay_ptr = (int*)get_config_value(r, dir_nbf_delay);
 
-    if(!signature_key){
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-                      "You must specify AuthJWTSignatureKey directive in configuration");
-        return HTTP_INTERNAL_SERVER_ERROR;
-    }
+	jwt_alg_t algorithm;
+	if(!strcmp(signature_algorithm, "HS512")){
+		algorithm = JWT_ALG_HS512;
+	}else if(!strcmp(signature_algorithm, "HS384")){
+	    algorithm = JWT_ALG_HS384;
+	}else if(!strcmp(signature_algorithm, "HS256")){
+	    algorithm = JWT_ALG_HS256;
+	}else if(!strcmp(signature_algorithm, "RS512")){
+	    algorithm = JWT_ALG_RS512;
+	}else if(!strcmp(signature_algorithm, "RS384")){
+	    algorithm = JWT_ALG_RS384;
+	}else if(!strcmp(signature_algorithm, "RS256")){
+	    algorithm = JWT_ALG_RS256;
+	}else if(!strcmp(signature_algorithm, "ES512")){
+	    algorithm = JWT_ALG_ES512;
+	}else if(!strcmp(signature_algorithm, "ES384")){
+	    algorithm = JWT_ALG_ES384;
+	}else if(!strcmp(signature_algorithm, "ES256")){
+	    algorithm = JWT_ALG_ES256;
+	}else{
+		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
+                  "Unknown algorithm %s.", signature_algorithm);
+		return HTTP_INTERNAL_SERVER_ERROR;
+	}
 
-    if(!signature_algorithm){
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-            "Cannot retrieve specified signature algorithm. This error should not happen since a default algorithm is set.");
-        return HTTP_INTERNAL_SERVER_ERROR;
-    }
-
-
-    if(!strcmp(signature_algorithm, "HS512")){
-        token_set_alg(token, JWT_ALG_HS512, (unsigned char*)signature_key);
-    }else if(!strcmp(signature_algorithm, "HS384")){
-        token_set_alg(token, JWT_ALG_HS256, (unsigned char*)signature_key);
-    }else if(!strcmp(signature_algorithm, "HS256")){
-        token_set_alg(token, JWT_ALG_HS256, (unsigned char*)signature_key);
-    }else{
-        return HTTP_INTERNAL_SERVER_ERROR;
-    }
+	token_set_alg(token, algorithm, sign_key);
+    
 
     time_t now = time(NULL);
     time_t iat = now;
@@ -647,12 +714,14 @@ static int auth_jwt_authn_with_token(request_rec *r){
     char* authorization_header = (char*)apr_table_get( r->headers_in, "Authorization");
     char* token_str;
 
-    char* signature_key = (char*)get_config_value(r, dir_signature_key);
-    if(signature_key == NULL){
-      ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-                    "You must specify AuthJWTSignatureKey directive in configuration");
-      return HTTP_INTERNAL_SERVER_ERROR;
-    }
+	
+    char* signature_algorithm = (char*)get_config_value(r, dir_signature_algorithm);
+	unsigned char key[MAX_KEY_LEN] = { 0 };
+	get_decode_key(r, signature_algorithm, key);
+
+	if(strlen((const char*)key)==0){
+		return HTTP_INTERNAL_SERVER_ERROR;
+	}
 
     if(!authorization_header){
         apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool, "Bearer realm=\"", ap_auth_name(r),"\"", NULL));
@@ -663,7 +732,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
     if(header_len > 7 && !strncmp(authorization_header, "Bearer ", 7)){
         token_str = authorization_header+7;
         jwt_t* token;
-        rv = token_check(r, &token, token_str, signature_key);
+        rv = token_check(r, &token, token_str, key);
         if(OK == rv){
             char* maybe_user = (char *)token_get_claim(token, "user");
             if(maybe_user == NULL){
@@ -693,16 +762,96 @@ static int auth_jwt_authn_with_token(request_rec *r){
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  TOKEN OPERATIONS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
 
+static void get_encode_key(request_rec *r, const char* signature_algorithm, unsigned char* key){
+	if(!signature_algorithm){
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
+            "Signature algorithm is NULL. This error should not happen since a default algorithm is set.");
+        return;
+    }
+
+	if(strcmp(signature_algorithm, "HS512")==0 || strcmp(signature_algorithm, "HS384")==0 || strcmp(signature_algorithm, "HS256")==0){
+		char* signature_shared_secret = (char*)get_config_value(r, dir_signature_shared_secret);
+		if(!signature_shared_secret){
+			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
+                      "You must specify AuthJWTSignatureSharedSecret directive in configuration with algorithm %s", signature_algorithm);
+        	return;
+		}
+		strcpy((char*)key, (const char*)signature_shared_secret);
+    }
+	else if(strcmp(signature_algorithm, "RS512")==0 || strcmp(signature_algorithm, "RS384")==0 || strcmp(signature_algorithm, "RS256")==0 ||
+			strcmp(signature_algorithm, "ES512")==0 || strcmp(signature_algorithm, "ES384")==0 || strcmp(signature_algorithm, "ES256")==0){
+		char* signature_private_key_file = (char*)get_config_value(r, dir_signature_private_key_file);
+		if(!signature_private_key_file){
+			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
+                      "You must specify AuthJWTSignaturePrivateKeyFile directive in configuration with algorithm %s", signature_algorithm);
+			return;
+		}
+		FILE *fp = fopen(signature_private_key_file, "r");
+		if(!fp){
+			//TODO get errno
+			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
+                      "Unable to open the file %s.", signature_private_key_file);
+			return;
+		}
+		int key_len = fread(key, 1, MAX_KEY_LEN, fp);
+		fclose(fp);
+		key[key_len] = '\0';
+	} else {
+		//unknown algorithm
+		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
+                      "Unknown algorithm %s.", signature_algorithm);
+	}
+}
+
+static void get_decode_key(request_rec *r, const char* signature_algorithm, unsigned char* key){
+	if(!signature_algorithm){
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
+            "Signature algorithm is NULL. This error should not happen since a default algorithm is set.");
+        return;
+    }
+
+	if(strcmp(signature_algorithm, "HS512")==0 || strcmp(signature_algorithm, "HS384")==0 || strcmp(signature_algorithm, "HS256")==0){
+		char* signature_shared_secret = (char*)get_config_value(r, dir_signature_shared_secret);
+		if(!signature_shared_secret){
+			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
+                      "You must specify AuthJWTSignatureSharedSecret directive in configuration with algorithm %s", signature_algorithm);
+        	return;
+		}
+		strcpy((char*)key,(const char*)signature_shared_secret);
+    }
+	else if(strcmp(signature_algorithm, "RS512")==0 || strcmp(signature_algorithm, "RS384")==0 || strcmp(signature_algorithm, "RS256")==0 || 
+			strcmp(signature_algorithm, "ES512")==0 || strcmp(signature_algorithm, "ES384")==0 || strcmp(signature_algorithm, "ES256")==0){
+		char* signature_public_key_file = (char*)get_config_value(r, dir_signature_public_key_file);
+		if(!signature_public_key_file){
+			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
+                      "You must specify AuthJWTSignaturePublicKeyFile directive in configuration with algorithm %s", signature_algorithm);
+			return;
+		}
+		FILE *fp = fopen(signature_public_key_file, "r");
+		if(!fp){
+			//TODO get errno
+			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
+                      "Unable to open the file %s.", signature_public_key_file);
+			return;
+		}
+		int key_len = fread(key, 1, MAX_KEY_LEN, fp);
+		fclose(fp);
+		key[key_len] = '\0';
+	} else {
+		//unknown algorithm
+		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
+                      "Unknown algorithm %s.", signature_algorithm);
+	}
+}
+
 static int token_new(jwt_t **jwt){
   return jwt_new(jwt);
 }
 
+
 static int token_check(request_rec *r, jwt_t **jwt, const char *token, const unsigned char *key){
 
-    char* signature_key = (char*)get_config_value(r, dir_signature_key);
-    char* signature_algorithm = (char *)get_config_value(r, dir_signature_algorithm);
-
-    int decode_res = jwt_decode(jwt, token, key, strlen(key));
+    int decode_res = token_decode(jwt, token, key);
 
     if(decode_res != 0){
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Decoding process has failed, token is malformed");
@@ -794,6 +943,10 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
     return OK;
 }
 
+static int token_decode(jwt_t **jwt, const char* token, const unsigned char *key){
+	return jwt_decode(jwt, token, key, strlen((const char*)key));
+}
+
 static char *token_encode_str(jwt_t *jwt){
     return jwt_encode_str(jwt);
 }
@@ -806,8 +959,8 @@ static const char* token_get_claim(jwt_t *token, const char* claim){
     return jwt_get_grant(token, claim);
 }
 
-static int token_set_alg(jwt_t *jwt, jwt_alg_t alg, unsigned char *key){
-    return jwt_set_alg(jwt, alg, key, strlen(key));
+static int token_set_alg(jwt_t *jwt, jwt_alg_t alg, const unsigned char *key){
+    return jwt_set_alg(jwt, alg, key, strlen((const char*)key));
 }
 
 static void token_free(jwt_t *token){
