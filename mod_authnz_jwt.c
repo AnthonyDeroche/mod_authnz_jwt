@@ -786,16 +786,22 @@ static void get_encode_key(request_rec *r, const char* signature_algorithm, unsi
                       "You must specify AuthJWTSignaturePrivateKeyFile directive in configuration with algorithm %s", signature_algorithm);
 			return;
 		}
-		FILE *fp = fopen(signature_private_key_file, "r");
-		if(!fp){
-			//TODO get errno
+		apr_status_t rv;
+		apr_file_t* key_fd = NULL;
+		rv = apr_file_open(&key_fd, signature_private_key_file, APR_READ, APR_OS_DEFAULT, r->pool);
+		if(rv!=APR_SUCCESS){
 			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
                       "Unable to open the file %s", signature_private_key_file);
 			return;
 		}
-		int key_len = fread(key, 1, MAX_KEY_LEN, fp);
-		fclose(fp);
-		key[key_len] = '\0';
+		rv = apr_file_read_full(key_fd, key, MAX_KEY_LEN, NULL); 
+		if(rv!=APR_SUCCESS && rv!=APR_EOF){
+			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
+                      "Error while reading the file %s", signature_private_key_file);
+			return;
+		}
+		apr_file_close(key_fd);
+		//key[key_len] = '\0';
 	} else {
 		//unknown algorithm
 		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
@@ -827,16 +833,22 @@ static void get_decode_key(request_rec *r, const char* signature_algorithm, unsi
                       "You must specify AuthJWTSignaturePublicKeyFile directive in configuration with algorithm %s", signature_algorithm);
 			return;
 		}
-		FILE *fp = fopen(signature_public_key_file, "r");
-		if(!fp){
-			//TODO get errno
+		apr_status_t rv;
+		apr_file_t* key_fd = NULL;
+		rv = apr_file_open(&key_fd, signature_public_key_file, APR_READ, APR_OS_DEFAULT, r->pool);
+		if(rv!=APR_SUCCESS){
 			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
                       "Unable to open the file %s", signature_public_key_file);
 			return;
 		}
-		int key_len = fread(key, 1, MAX_KEY_LEN, fp);
-		fclose(fp);
-		key[key_len] = '\0';
+		rv = apr_file_read_full(key_fd, key, MAX_KEY_LEN, NULL); 
+		if(rv!=APR_SUCCESS && rv!=APR_EOF){
+			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
+                      "Error while reading the file %s", signature_public_key_file);
+			return;
+		}
+		apr_file_close(key_fd);
+		//key[key_len] = '\0';
 	} else {
 		//unknown algorithm
 		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
