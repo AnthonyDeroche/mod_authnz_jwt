@@ -561,7 +561,7 @@ static int create_token(request_rec *r, char** token_str, const char* username){
 	    algorithm = JWT_ALG_ES256;
 	}else{
 		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-                  "Unknown algorithm %s.", signature_algorithm);
+                  "Unknown algorithm %s", signature_algorithm);
 		return HTTP_INTERNAL_SERVER_ERROR;
 	}
 
@@ -765,7 +765,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 static void get_encode_key(request_rec *r, const char* signature_algorithm, unsigned char* key){
 	if(!signature_algorithm){
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-            "Signature algorithm is NULL. This error should not happen since a default algorithm is set.");
+            "Signature algorithm is NULL. This error should not happen since a default algorithm is set");
         return;
     }
 
@@ -790,7 +790,7 @@ static void get_encode_key(request_rec *r, const char* signature_algorithm, unsi
 		if(!fp){
 			//TODO get errno
 			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-                      "Unable to open the file %s.", signature_private_key_file);
+                      "Unable to open the file %s", signature_private_key_file);
 			return;
 		}
 		int key_len = fread(key, 1, MAX_KEY_LEN, fp);
@@ -799,14 +799,14 @@ static void get_encode_key(request_rec *r, const char* signature_algorithm, unsi
 	} else {
 		//unknown algorithm
 		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-                      "Unknown algorithm %s.", signature_algorithm);
+                      "Unknown algorithm %s", signature_algorithm);
 	}
 }
 
 static void get_decode_key(request_rec *r, const char* signature_algorithm, unsigned char* key){
 	if(!signature_algorithm){
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-            "Signature algorithm is NULL. This error should not happen since a default algorithm is set.");
+            "Signature algorithm is NULL. This error should not happen since a default algorithm is set");
         return;
     }
 
@@ -831,7 +831,7 @@ static void get_decode_key(request_rec *r, const char* signature_algorithm, unsi
 		if(!fp){
 			//TODO get errno
 			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-                      "Unable to open the file %s.", signature_public_key_file);
+                      "Unable to open the file %s", signature_public_key_file);
 			return;
 		}
 		int key_len = fread(key, 1, MAX_KEY_LEN, fp);
@@ -840,7 +840,7 @@ static void get_decode_key(request_rec *r, const char* signature_algorithm, unsi
 	} else {
 		//unknown algorithm
 		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-                      "Unknown algorithm %s.", signature_algorithm);
+                      "Unknown algorithm %s", signature_algorithm);
 	}
 }
 
@@ -879,7 +879,7 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
 
     const char* iss_to_check = token_get_claim(*jwt, "iss");
     if(iss_config && iss_to_check && strcmp(iss_config, iss_to_check)!=0){
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Token issuer does not match with configured issuer.");
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Token issuer does not match with configured issuer");
         apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
           "Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Issuer is not valid\"",
            NULL));
@@ -888,7 +888,7 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
 
     const char* aud_to_check = token_get_claim(*jwt, "aud");
     if(aud_config && aud_to_check && strcmp(aud_config, aud_to_check)!=0){
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Token audience does not match with configured audience.");
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Token audience does not match with configured audience");
         apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
           "Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Audience is not valid\"",
            NULL));
@@ -897,7 +897,7 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
 
     const char* sub_to_check = token_get_claim(*jwt, "sub");
     if(sub_config && sub_to_check && strcmp(sub_config, sub_to_check)!=0){
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Token subject does not match with configured subject.");
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Token subject does not match with configured subject");
         apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
           "Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Subject is not valid\"",
            NULL));
@@ -911,7 +911,7 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
         time_t now = time(NULL);
         if (exp_int + leeway < now){
             /* token expired */
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Token expired.");
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Token expired");
             apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
               "Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Token expired\"",
                NULL));
@@ -919,7 +919,7 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
         }
     }else{
         /* exp is mandatory parameter */
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Missing exp in token.");
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Missing exp in token");
         apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
           "Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Expiration is missing in token\"",
            NULL));
@@ -933,7 +933,7 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
         time_t now = time(NULL);
         if (nbf_int - leeway > now){
             /* token is too recent to be processed */
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Nbf check failed. Token can't be processed now.");
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Nbf check failed. Token can't be processed now");
             apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
               "Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Token can't be processed now due to nbf field\"",
                NULL));
