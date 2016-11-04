@@ -737,7 +737,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
             char* maybe_user = (char *)token_get_claim(token, "user");
             if(maybe_user == NULL){
                 ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
-                  "Username was not in token");
+						"Username was not in token");
                 apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
                   "Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Username was not in token\"",
                    NULL));
@@ -794,14 +794,14 @@ static void get_encode_key(request_rec *r, const char* signature_algorithm, unsi
                       "Unable to open the file %s", signature_private_key_file);
 			return;
 		}
-		rv = apr_file_read_full(key_fd, key, MAX_KEY_LEN, NULL); 
+		apr_size_t key_len;
+		rv = apr_file_read_full(key_fd, key, MAX_KEY_LEN, &key_len); 
 		if(rv!=APR_SUCCESS && rv!=APR_EOF){
 			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
                       "Error while reading the file %s", signature_private_key_file);
 			return;
 		}
 		apr_file_close(key_fd);
-		//key[key_len] = '\0';
 	} else {
 		//unknown algorithm
 		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
@@ -841,14 +841,14 @@ static void get_decode_key(request_rec *r, const char* signature_algorithm, unsi
                       "Unable to open the file %s", signature_public_key_file);
 			return;
 		}
-		rv = apr_file_read_full(key_fd, key, MAX_KEY_LEN, NULL); 
+		apr_size_t key_len;
+		rv = apr_file_read_full(key_fd, key, MAX_KEY_LEN, &key_len); 
 		if(rv!=APR_SUCCESS && rv!=APR_EOF){
 			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
                       "Error while reading the file %s", signature_public_key_file);
 			return;
 		}
 		apr_file_close(key_fd);
-		//key[key_len] = '\0';
 	} else {
 		//unknown algorithm
 		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
@@ -866,9 +866,9 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
     int decode_res = token_decode(jwt, token, key);
 
     if(decode_res != 0){
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Decoding process has failed, token is malformed");
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)"Decoding process has failed, token is either malformed or signature is invalid");
         apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
-          "Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Token is malformed\"",
+          "Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Token is malformed or signature is invalid\"",
            NULL));
         return HTTP_UNAUTHORIZED;
     }
