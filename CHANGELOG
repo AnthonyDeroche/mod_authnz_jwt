@@ -1,0 +1,10 @@
+
+
+
+v0.2
+- Support for EC and RSA in JWT signature
+- Added directives JWTSignaturePublicKeyFile and JWTSignaturePrivateKeyFile
+- Renamed directive JWTSignatureSecret to JWTSignatureSharedSecret
+
+v0.1
+- Support for HMAC in JWT signature

@@ -4,18 +4,125 @@ Authentication module for Apache httpd with JSON web tokens (JWT).
 
 More on JWT : https://jwt.io/
 
-On the first hand, this module is able to deliver JSON web tokens containing all public fields (iss, aud, sub, iat, nbf, exp), and the private field "user". Authentication process is carried out by an authentication provider and spicified by the AuthJWTProvider directive.
+This module is able to deliver JSON web tokens containing all public fields (iss, aud, sub, iat, nbf, exp), and the private field "user". Authentication process is carried out by an authentication provider and specified by the AuthJWTProvider directive.
 
 On the other hand, this module is able to check validity of token based on its signature, and on its public fields. If the token is valid, then the user is authenticated and can be used by an authorization provider with the directive "Require valid-user" to authorize or not the request.
 
 Although this module is able to deliver valid tokens, it may be used to check tokens delivered by a custom application in any language, as long as a secret is shared between the two parts. This feature is possible because token-based authentication is stateless.
 
-Note that this module does not support asymetric algorithms such as RSA or DSA to check signature for the moment.
-
 ## Build Requirements
 
-- libjwt v1.3.1 (https://github.com/benmcollins/libjwt)
+- libjwt (https://github.com/benmcollins/libjwt)
 - Apache development package (apache2-dev on Debian/Ubuntu and httpd-devel on CentOS/Fedora)
+
+## Roadmap
+
+- Authorization based on token claims
+- Possibility to ignore checks on exp, nbf, iss, aud, sub
+- Handle merge confs
+
+## Quick start
+
+### Installation from sources
+~~~~
+sudo apt-get install libtool pkg-config autoconf libssl-dev check libjansson-dev
+git clone https://github.com/benmcollins/libjwt
+cd libjwt
+autoreconf -i
+./configure
+make
+sudo make install
+cd ..
+sudo apt-get install apache2 apache2-dev
+git clone https://github.com/AnthonyDeroche/mod_authnz_jwt
+cd mod_authnz_jwt
+make
+sudo make install
+~~~~
+
+### Generate EC keys
+~~~~
+openssl ecparam -name secp256k1 -genkey -noout -out ec-priv.pem
+openssl ec -in ec-priv.pem -pubout -out ec-pub.pem
+~~~~
+
+### Generate RSA keys
+~~~~
+openssl genpkey -algorit RSA -out rsa-priv.pem -pkeyopt rsa_keygen_bits:4096
+openssl rsa -pubout -in rsa-priv.pem -out rsa-pub.pem
+~~~~
+
+## Configuration examples
+
+This configuration is given for tests purpose. Remember to always use TLS in production.
+
+With HMAC algorithm:
+~~~~
+<VirtualHost *:80>
+	ServerName deroche.me
+	DocumentRoot /var/www/html/
+	
+	AuthJWTSignatureAlgorithm HS256
+	AuthJWTSignatureSharedSecret CHANGEME
+	AuthJWTExpDelay 1800
+	AuthJWTNbfDelay 0
+	AuthJWTIss deroche.me
+	AuthJWTSub jwt-demo
+	AuthJWTLeeway 10
+
+	<Directory /var/www/html/demo/secured/>
+		AllowOverride None
+		AuthType jwt
+		AuthName "private area"
+		Require valid-user
+	</Directory>
+	
+	
+	<Location /demo/login>
+		SetHandler jwt-login-handler
+		AuthJWTProvider file
+		AuthUserFile /var/www/jwt.htpasswd
+	</Location>
+
+	ErrorLog ${APACHE_LOG_DIR}/error.log
+	CustomLog ${APACHE_LOG_DIR}/access.log combined
+</VirtualHost>
+~~~~
+
+With EC algorithm:
+~~~~
+<VirtualHost *:80>
+	ServerName deroche.me
+	DocumentRoot /var/www/html/
+	
+	AuthJWTSignatureAlgorithm ES256
+	AuthJWTSignaturePublicKeyFile /etc/pki/auth_pub.pem
+	AuthJWTSignaturePrivateKeyFile /etc/pki/auth_priv.pem
+	AuthJWTExpDelay 1800
+	AuthJWTNbfDelay 0
+	AuthJWTIss deroche.me
+	AuthJWTSub jwt-demo
+	AuthJWTLeeway 10
+
+	<Directory /var/www/html/demo/secured/>
+		AllowOverride None
+		AuthType jwt
+		AuthName "private area"
+		Require valid-user
+	</Directory>
+	
+	
+	<Location /demo/login>
+		SetHandler jwt-login-handler
+		AuthJWTProvider file
+		AuthUserFile /var/www/jwt.htpasswd
+	</Location>
+
+	ErrorLog ${APACHE_LOG_DIR}/error.log
+	CustomLog ${APACHE_LOG_DIR}/access.log combined
+</VirtualHost>
+~~~~
+
 
 ## Documentation
 
@@ -31,14 +138,26 @@ Note that this module does not support asymetric algorithms such as RSA or DSA t
 * **Description**: The algorithm to use to sign tokens
 * **Context**: server config, directory
 * **Default**: HS256
-* **Possibles values**: HS256, HS384, HS512
+* **Possibles values**: HS256, HS384, HS512, RS256, RS384, RS512, ES256, ES384, ES512
 * **Mandatory**: yes
 
-#####AuthJWTSignatureSecret 
+#####AuthJWTSignatureSharedSecret 
 
-* **Description**: The secret to use to sign tokens with HMACs. Secret length must be respectively 32, 48, 64 for HS256, HS384, HS512.
+* **Description**: The secret to use to sign tokens with HMACs.
 * **Context**: server config, directory
-* **Mandatory**: yes
+* **Mandatory**: no
+
+#####AuthJWTSignaturePublicKeyFile
+
+* **Description**: The file path of public key used with either RSA or EC algorithms.
+* **Context**: server config, directory
+* **Mandatory**: no
+
+#####AuthJWTSignaturePrivateKeyFile 
+
+* **Description**: The file path of private key used with either RSA or EC algorithms.
+* **Context**: server config, directory
+* **Mandatory**: no
 
 #####AuthJWTIss
 * **Description**: The issuer of delievered tokens
@@ -73,45 +192,8 @@ Note that this module does not support asymetric algorithms such as RSA or DSA t
 * **Default**: 0
 * **Mandatory**: no
 
-## Configuration example
-
-~~~~
-<VirtualHost *:80>
-	ServerName deroche.me
-	DocumentRoot /var/www/html/
-	
-	AuthJWTSignatureAlgorithm HS256
-	AuthJWTSignatureSecret CHANGEME--32--characters--secret
-	AuthJWTExpDelay 1800
-	AuthJWTNbfDelay 0
-	AuthJWTIss deroche.me
-	AuthJWTSub jwt-demo
-	AuthJWTLeeway 10
-
-	<Directory /var/www/html/demo/secured/>
-		AllowOverride None
-		AuthType jwt
-		AuthName "private area"
-		Require valid-user
-	</Directory>
-	
-	
-	<Location /demo/login>
-		SetHandler jwt-login-handler
-		AuthJWTProvider file
-		AuthUserFile /var/www/jwt.htpasswd
-	</Location>
-
-	ErrorLog ${APACHE_LOG_DIR}/error.log
-	CustomLog ${APACHE_LOG_DIR}/access.log combined
-</VirtualHost>		
-~~~~
 
 ## Demo
 <a href="https://anthony.deroche.me/demo/jwt.php" target="_blank">https://anthony.deroche.me/demo/jwt.php</a>
 
-## TODO
-- Adapt code to last version of libjwt
-- Possibility to disable checks on exp, nbf, iss, aud, sub
-- Authorization based on token public fields
-- Merge confs
+
