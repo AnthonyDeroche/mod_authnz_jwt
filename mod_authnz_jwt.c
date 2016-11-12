@@ -106,6 +106,13 @@ static const char *set_jwt_param(cmd_parms * cmd, void* config, const char* valu
 static const char *set_jwt_int_param(cmd_parms * cmd, void* config, const char* value);
 static void* get_config_value(request_rec *r, jwt_directive directive);
 
+static const char *jwt_parse_config(cmd_parms *cmd, const char *require_line, const void **parsed_require_line);
+static authz_status jwtclaim_check_authorization(request_rec *r, const char* require_args, const void *parsed_require_args);
+static const authz_provider authz_jwtclaim_provider = {
+	&jwtclaim_check_authorization,
+	&jwt_parse_config
+};
+
 static int auth_jwt_login_handler(request_rec *r);
 static int check_authn(request_rec *r, const char *username, const char *password);
 static int create_token(request_rec *r, char** token_str, const char* username);
@@ -322,10 +329,61 @@ static void* get_config_value(request_rec *r, jwt_directive directive){
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  REGISTER HOOKS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
 
 static void register_hooks(apr_pool_t * p){
-  ap_hook_handler(auth_jwt_login_handler, NULL, NULL, APR_HOOK_MIDDLE);
-  ap_hook_check_authn(auth_jwt_authn_with_token, NULL, NULL, APR_HOOK_MIDDLE,
+	ap_hook_handler(auth_jwt_login_handler, NULL, NULL, APR_HOOK_MIDDLE);
+ 	ap_hook_check_authn(auth_jwt_authn_with_token, NULL, NULL, APR_HOOK_MIDDLE,
                         AP_AUTH_INTERNAL_PER_CONF);
+	ap_register_auth_provider(p, AUTHZ_PROVIDER_GROUP, "jwt-claim", AUTHZ_PROVIDER_VERSION, &authz_jwtclaim_provider, AP_AUTH_INTERNAL_PER_CONF);
 }
+
+
+
+static const char *jwt_parse_config(cmd_parms *cmd, const char *require_line, const void **parsed_require_line){
+	const char *expr_err = NULL;
+	ap_expr_info_t *expr;
+	
+	expr = ap_expr_parse_cmd(cmd, require_line, AP_EXPR_FLAG_STRING_RESULT, &expr_err, NULL);
+	if(expr_err)
+		return apr_pstrcat(cmd->temp_pool, "Cannot parse expression in require line: ", expr_err, NULL);
+	
+	*parsed_require_line = expr;
+	return NULL;
+}
+
+static authz_status jwtclaim_check_authorization(request_rec *r, const char* require_args, const void *parsed_require_args){
+	
+	if(!r->user){
+		return AUTHZ_DENIED_NO_USER;
+	}
+	const char* err = NULL;
+	const ap_expr_info_t *expr = parsed_require_args;
+	const char* require = ap_expr_str_exec(r, expr, &err);
+	if(err){
+		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(1810)
+		"auth_jwt authorize: require jwt-claim: Can't evaluate expression: %s",err);
+		return AUTHZ_DENIED;
+	}
+
+	char *w, *value;
+
+	while(require[0]){
+		w = ap_getword(r->pool, &require, '=');
+		value = ap_getword_conf(r->pool, &require);
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(1810)
+						"auth_jwt authorize: checking claim %s has value %s", w, value);
+		const char* real_value = token_get_claim((jwt_t*)apr_table_get(r->notes, "jwt"), w);
+		if(real_value != NULL && strcmp(real_value, value) == 0){
+			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(1810)
+						"auth_jwt authorize: require jwt-claim: authorization successful for claim %s=%s", w, value);
+			return AUTHZ_GRANTED;
+		}else{
+			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(1810)
+						"auth_jwt authorize: require jwt-claim: authorization failed for claim %s=%s", w, value);
+		}
+	}
+	
+	return AUTHZ_DENIED;
+}
+
 
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  DIRECTIVE HANDLERS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
@@ -743,6 +801,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
                    NULL));
                 return HTTP_UNAUTHORIZED;
             }
+			apr_table_setn(r->notes, "jwt", (const char*)token);		
             r->user = maybe_user;
             return OK;
         }else{
@@ -978,3 +1037,4 @@ static int token_set_alg(jwt_t *jwt, jwt_alg_t alg, const unsigned char *key){
 static void token_free(jwt_t *token){
     jwt_free(token);
 }
+
