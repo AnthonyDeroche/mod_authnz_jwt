@@ -926,7 +926,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
         jwt_t* token;
         rv = token_check(r, &token, token_str, key);
         if(OK == rv){
-            char* maybe_user = (char *)token_get_claim(token, "user");
+            char* maybe_user = (char *)token_get_claim(token, (const char*)get_config_value(r, dir_attribute_username));
             if(maybe_user == NULL){
                 ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(01810)
 						"Username was not in token");
