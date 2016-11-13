@@ -118,6 +118,8 @@ typedef enum {
 
 static void *create_auth_jwt_dir_config(apr_pool_t *p, char *d);
 static void *create_auth_jwt_config(apr_pool_t * p, server_rec *s);
+static void *merge_auth_jwt_dir_config(apr_pool_t *p, void* basev, void* addv);
+static void *merge_auth_jwt_config(apr_pool_t *p, void* basev, void* addv);
 static void register_hooks(apr_pool_t * p);
 
 static const char *add_authn_provider(cmd_parms * cmd, void *config, const char *arg);
@@ -244,14 +246,55 @@ static void *create_auth_jwt_config(apr_pool_t * p, server_rec *s){
 	return (void *)conf;
 }
 
+static void* merge_auth_jwt_dir_config(apr_pool_t *p, void* basev, void* addv){
+	auth_jwt_config_rec *base = (auth_jwt_config_rec *)basev;
+	auth_jwt_config_rec *add = (auth_jwt_config_rec *)addv;
+	auth_jwt_config_rec *new = (auth_jwt_config_rec *) apr_pcalloc(p, sizeof(auth_jwt_config_rec));
+	
+	new->providers = !add->providers ? base->providers : add->providers;
+	new->signature_algorithm = (add->signature_algorithm_set == 0) ? base->signature_algorithm : add->signature_algorithm;
+	new->signature_algorithm_set = base->signature_algorithm_set || add->signature_algorithm_set;
+
+	new->signature_shared_secret = (add->signature_shared_secret_set == 0) ? base->signature_shared_secret : add->signature_shared_secret;
+	new->signature_shared_secret_set = base->signature_shared_secret_set || add->signature_shared_secret_set;
+	new->signature_public_key_file = (add->signature_public_key_file_set == 0) ? base->signature_public_key_file : add->signature_public_key_file;
+	new->signature_public_key_file_set = base->signature_public_key_file_set || add->signature_public_key_file_set;
+	new->signature_private_key_file = (add->signature_private_key_file_set == 0) ? base->signature_private_key_file : add->signature_private_key_file;
+	new->signature_private_key_file_set = base->signature_private_key_file_set || add->signature_private_key_file_set;
+
+	new->exp_delay = (add->exp_delay_set == 0) ? base->exp_delay : add->exp_delay;
+	new->exp_delay_set = base->exp_delay_set || add->exp_delay_set;
+	new->nbf_delay = (add->nbf_delay_set == 0) ? base->nbf_delay : add->nbf_delay;
+	new->nbf_delay_set = base->nbf_delay_set || add->nbf_delay_set;
+	new->leeway = (add->leeway_set == 0) ? base->leeway : add->leeway;
+	new->leeway_set = base->leeway_set || add->leeway_set;
+	new->iss = (add->iss_set == 0) ? base->iss : add->iss;
+	new->iss_set = base->iss_set || add->iss_set;
+	new->sub = (add->sub_set == 0) ? base->sub : add->sub;
+	new->sub_set = base->sub_set || add->sub_set;
+	new->aud = (add->aud_set == 0) ? base->aud : add->aud;
+	new->aud_set = base->aud_set || add->aud_set;
+	new->form_username = (add->form_username_set == 0) ? base->form_username : add->form_username;
+	new->form_username_set = base->form_username_set || add->form_username_set;
+	new->form_password = (add->form_password_set == 0) ? base->form_password : add->form_password;
+	new->form_password_set = base->form_password_set || add->form_password_set;
+	new->attribute_username = (add->attribute_username_set == 0) ? base->attribute_username : add->attribute_username;
+	new->attribute_username_set = base->attribute_username_set || add->attribute_username_set;
+	return (void*)new;
+}
+
+static void* merge_auth_jwt_config(apr_pool_t *p, void* basev, void* addv){
+	return merge_auth_jwt_dir_config(p, basev, addv);
+}
+
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  DECLARE MODULE IN HTTPD CORE ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
 
 AP_DECLARE_MODULE(auth_jwt) = {
   	STANDARD20_MODULE_STUFF,
   	create_auth_jwt_dir_config,
-  	NULL,
+  	merge_auth_jwt_dir_config,
   	create_auth_jwt_config,
-  	NULL,
+  	merge_auth_jwt_config,
   	auth_jwt_cmds,
   	register_hooks
 };
