@@ -152,7 +152,7 @@ static int token_add_claim(jwt_t *jwt, const char *claim, const char *val);
 static void token_free(jwt_t *token);
 static int token_set_alg(jwt_t *jwt, jwt_alg_t alg, const unsigned char *key);
 static char *token_encode_str(jwt_t *jwt);
-static char** token_get_claim_array_of_string(jwt_t *token, const char* claim, int* len);
+static char** token_get_claim_array_of_string(apr_pool_t *pool, jwt_t *token, const char* claim, int* len);
 static json_t* token_get_claim_array(jwt_t *token, const char* claim);
 static json_t* token_get_claim_json(jwt_t *token, const char* claim);
 
@@ -476,25 +476,16 @@ static authz_status jwtclaimarray_check_authorization(request_rec *r, const char
 		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(1810)
 						"auth_jwt authorize: checking claim %s has value %s", w, value);
 		int len;
-		char** array_values = token_get_claim_array_of_string(jwt, w, &len);
+		char** array_values = token_get_claim_array_of_string(r->pool, jwt, w, &len);
 		if(array_values != NULL){
 			int i,j;
 			for(i=0;i<len;i++){
 				if(apr_strnatcasecmp((const char*)array_values[i], (const char*)value) == 0){
 					ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(1810)
 						"auth_jwt authorize: require jwt-claim: authorization successful for claim %s=%s", w, value);
-					for(j=0;j<len;j++){
-						free(array_values[i]);
-					}
-					free(array_values);
 					return AUTHZ_GRANTED;
 				}
 			}
-
-			for(j=0;j<len;j++){
-				free(array_values[i]);
-			}
-			free(array_values);
 		}
 	}
 
@@ -1164,30 +1155,24 @@ static const char* token_get_claim(jwt_t *token, const char* claim){
     return jwt_get_grant(token, claim);
 }
 
-//Returned array must be freed by caller
-static char** token_get_claim_array_of_string(jwt_t *token, const char* claim, int* len){
+static char** token_get_claim_array_of_string(apr_pool_t* pool, jwt_t *token, const char* claim, int* len){
 	json_t* array = token_get_claim_array(token, claim);
 	if(!array){
 		return NULL;
 	}
 
 	int array_len = json_array_size(array);
-	char** values = (char**)ap_calloc((size_t)array_len, sizeof(char*));
+	char** values = (char**)apr_pcalloc(pool, array_len*sizeof(char*));
 	int i;
 	for(i=0; i<array_len; i++){
 		json_t* data;
 		data = json_array_get(array, i);
 		if(!json_is_string(data)){
 			json_decref(array);
-			int j;
-			for(j=0;j<i;j++){
-				free(values[j]);
-			}
-			free(values);
 			return NULL;
 		}
 		const char* string_value = (const char*)json_string_value(data);
-		values[i] = (char*)ap_calloc((size_t)strlen(string_value)+1, sizeof(char));
+		values[i] = (char*)apr_pcalloc(pool, strlen(string_value)+1*sizeof(char));
 		strcpy(values[i], string_value);
 	}
 	json_decref(array);
