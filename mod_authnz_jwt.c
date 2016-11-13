@@ -217,9 +217,6 @@ static void *create_auth_jwt_dir_config(apr_pool_t *p, char *d){
 	conf->form_username_set=0;
 	conf->form_password_set=0;
 	conf->attribute_username_set=0;
-	conf->form_username=DEFAULT_FORM_USERNAME;
-	conf->form_password=DEFAULT_FORM_PASSWORD;
-	conf->attribute_username=DEFAULT_ATTRIBUTE_USERNAME;
 
     return (void *)conf;
 }
@@ -241,9 +238,6 @@ static void *create_auth_jwt_config(apr_pool_t * p, server_rec *s){
 	conf->form_username_set=0;
 	conf->form_password_set=0;
 	conf->attribute_username_set=0;
-	conf->form_username=DEFAULT_FORM_USERNAME;
-	conf->form_password=DEFAULT_FORM_PASSWORD;
-	conf->attribute_username=DEFAULT_ATTRIBUTE_USERNAME;
 
     return (void *)conf;
 }
@@ -368,7 +362,7 @@ static void* get_config_value(request_rec *r, jwt_directive directive){
             }else if(sconf->form_username_set && sconf->form_username){
                 value = (void*)sconf->form_username;
             }else{
-                return NULL;
+                return DEFAULT_FORM_USERNAME;
             }
 			break;
 		case dir_form_password:
@@ -377,7 +371,7 @@ static void* get_config_value(request_rec *r, jwt_directive directive){
             }else if(sconf->form_password_set && sconf->form_password){
                 value = (void*)sconf->form_password;
             }else{
-                return NULL;
+                return DEFAULT_FORM_PASSWORD;
             }
 			break;
 		case dir_attribute_username:
@@ -386,7 +380,7 @@ static void* get_config_value(request_rec *r, jwt_directive directive){
             }else if(sconf->attribute_username_set && sconf->attribute_username){
                 value = (void*)sconf->attribute_username;
             }else{
-                return NULL;
+                return DEFAULT_ATTRIBUTE_USERNAME;
             }
 			break;
         default:
