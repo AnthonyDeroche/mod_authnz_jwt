@@ -20,10 +20,11 @@
 
 // RFC 7519 compliant library
 #include "jwt.h"
+//JSON library
 #include "jansson.h"
 
 #include "apr_strings.h"
-#include "apr_lib.h"                /* for apr_isspace */
+#include "apr_lib.h"
 
 #include "ap_config.h"
 #include "httpd.h"
@@ -42,6 +43,10 @@
 #define PASSWORD_INDEX 1
 #define FORM_SIZE 512
 #define MAX_KEY_LEN 16384
+
+#define DEFAULT_FORM_USERNAME "user"
+#define DEFAULT_FORM_PASSWORD "password"
+#define DEFAULT_ATTRIBUTE_USERNAME "user"
 
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  CONFIGURATION STRUCTURE ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
@@ -79,6 +84,15 @@ typedef struct {
     const char* aud;
     int aud_set;
 
+	const char* form_username;
+	int form_username_set;
+
+	const char* form_password;
+	int form_password_set;
+
+	const char* attribute_username;
+	int attribute_username_set;
+
     char *dir;
 
 } auth_jwt_config_rec;
@@ -92,7 +106,10 @@ typedef enum {
 	dir_nbf_delay, 
 	dir_iss, dir_sub, 
 	dir_aud, 
-	dir_leeway
+	dir_leeway,
+	dir_form_username,
+	dir_form_password,
+	dir_attribute_username
 } jwt_directive;
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  FUNCTIONS HEADERS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
@@ -167,6 +184,12 @@ static const command_rec auth_jwt_cmds[] =
                      "The leeway to account for clock skew in token validation process"),
    AP_INIT_ITERATE("AuthJWTProvider", add_authn_provider, NULL, OR_AUTHCFG,
                 "Specify the auth providers for a directory or location"),
+   AP_INIT_TAKE1("AuthJWTFormUsername", set_jwt_param, (void *)dir_form_username, RSRC_CONF|OR_AUTHCFG,
+                     "The name of the field containg the username in authentication process"),
+   AP_INIT_TAKE1("AuthJWTFormPassword", set_jwt_param, (void *)dir_form_password, RSRC_CONF|OR_AUTHCFG,
+                     "The name of the field containg the password in authentication process"),
+   AP_INIT_TAKE1("AuthJWTAttributeUsername", set_jwt_param, (void *)dir_attribute_username, RSRC_CONF|OR_AUTHCFG,
+                     "The name of the attribute containing the username in the token"),
     {NULL}
 };
 
@@ -176,7 +199,6 @@ static const command_rec auth_jwt_cmds[] =
 static void *create_auth_jwt_dir_config(apr_pool_t *p, char *d){
     auth_jwt_config_rec *conf = (auth_jwt_config_rec*) apr_pcalloc(p, sizeof(*conf));
     conf->dir = d;
-    //conf->form_size = HUGE_STRING_LEN;
 
     conf->leeway = 0;
     conf->exp_delay = 3600;
@@ -192,6 +214,12 @@ static void *create_auth_jwt_dir_config(apr_pool_t *p, char *d){
     conf->iss_set = 0;
     conf->aud_set = 0;
     conf->sub_set = 0;
+	conf->form_username_set=0;
+	conf->form_password_set=0;
+	conf->attribute_username_set=0;
+	conf->form_username=DEFAULT_FORM_USERNAME;
+	conf->form_password=DEFAULT_FORM_PASSWORD;
+	conf->attribute_username=DEFAULT_ATTRIBUTE_USERNAME;
 
     return (void *)conf;
 }
@@ -210,6 +238,12 @@ static void *create_auth_jwt_config(apr_pool_t * p, server_rec *s){
     conf->iss_set = 0;
     conf->aud_set = 0;
     conf->sub_set = 0;
+	conf->form_username_set=0;
+	conf->form_password_set=0;
+	conf->attribute_username_set=0;
+	conf->form_username=DEFAULT_FORM_USERNAME;
+	conf->form_password=DEFAULT_FORM_PASSWORD;
+	conf->attribute_username=DEFAULT_ATTRIBUTE_USERNAME;
 
     return (void *)conf;
 }
@@ -328,6 +362,33 @@ static void* get_config_value(request_rec *r, jwt_directive directive){
                 return NULL;
             }
             break;
+		case dir_form_username:
+			if(dconf->form_username_set && dconf->form_username){
+                value = (void*)dconf->form_username;
+            }else if(sconf->form_username_set && sconf->form_username){
+                value = (void*)sconf->form_username;
+            }else{
+                return NULL;
+            }
+			break;
+		case dir_form_password:
+			if(dconf->form_password_set && dconf->form_password){
+                value = (void*)dconf->form_password;
+            }else if(sconf->form_password_set && sconf->form_password){
+                value = (void*)sconf->form_password;
+            }else{
+                return NULL;
+            }
+			break;
+		case dir_attribute_username:
+			if(dconf->attribute_username_set && dconf->attribute_username){
+                value = (void*)dconf->attribute_username;
+            }else if(sconf->attribute_username_set && sconf->attribute_username){
+                value = (void*)sconf->attribute_username;
+            }else{
+                return NULL;
+            }
+			break;
         default:
             return NULL;
     }
@@ -530,6 +591,18 @@ static const char *set_jwt_param(cmd_parms * cmd, void* config, const char* valu
             conf->sub = value;
             conf->sub_set = 1;
         break;
+		case dir_form_username:
+			conf->form_username = value;
+			conf->form_username_set = 1;
+		break;
+		case dir_form_password:
+			conf->form_password = value;
+			conf->form_password_set = 1;
+		break;
+		case dir_attribute_username:
+			conf->attribute_username = value;
+			conf->attribute_username_set = 1;
+		break;
     }
 
   return NULL;
@@ -596,7 +669,8 @@ static int auth_jwt_login_handler(request_rec *r){
   if (res != OK) {
     return res;
   }
-  char* fields_name[] = {"user", "password"};
+
+  char* fields_name[] = {(char *)get_config_value(r, dir_form_username), (char *)get_config_value(r, dir_form_password)};
   char* fields[] = {fields_name[USER_INDEX], fields_name[PASSWORD_INDEX]};
 
   char* sent_values[2];
@@ -723,7 +797,9 @@ static int create_token(request_rec *r, char** token_str, const char* username){
         token_add_claim(token, "aud", aud);
     }
 
-    token_add_claim(token, "user", username);
+	const char* username_attribute = (const char *)get_config_value(r, dir_attribute_username);
+
+    token_add_claim(token, username_attribute, username);
 
     *token_str = token_encode_str(token);
     token_free(token);
