@@ -5,6 +5,7 @@ Authentication module for Apache httpd with JSON web tokens (JWT).
 More on JWT : https://jwt.io/
 
 Supported algorithms : HS256, HS384, HS512, RS256, RS384, RS512, ES256, ES384, ES512
+
 Supported checks : iss, aud, exp, nbf
 
 This module is able to deliver JSON web tokens containing all public fields (iss, aud, sub, iat, nbf, exp), and the private field "user". Authentication process is carried out by an authentication provider and specified by the AuthJWTProvider directive.
@@ -49,6 +50,18 @@ openssl genpkey -algorit RSA -out rsa-priv.pem -pkeyopt rsa_keygen_bits:4096
 openssl rsa -pubout -in rsa-priv.pem -out rsa-pub.pem
 ~~~~
 
+### Authorization
+
+You can use the directive Require jwt-claim key1=value1 key2=value2. Putting multiple keys/values in the same require results in an OR. You can use RequireAny and RequireAll directives to be more precise in your rules. 
+
+In case your key is an array, you can use the directive Require jwt-claim-array key1=value1 to test that "value1" is contained in the array pointed by the key "key1".
+
+Examples:
+~~~~
+Require jwt-claim user=toto
+Require jwt-claim-array groups=group1
+~~~~
+
 ## Configuration examples
 
 This configuration is given for tests purpose. Remember to always use TLS in production.
@@ -69,7 +82,7 @@ With HMAC algorithm:
 	AuthJWTExpDelay 1800
 	AuthJWTNbfDelay 0
 	AuthJWTIss deroche.me
-	AuthJWTSub jwt-demo
+	AuthJWTAud demo
 	AuthJWTLeeway 10
 
 	<Directory /var/www/html/demo/secured/>
@@ -108,7 +121,7 @@ With EC algorithm:
 	AuthJWTExpDelay 1800
 	AuthJWTNbfDelay 0
 	AuthJWTIss deroche.me
-	AuthJWTSub jwt-demo
+	AuthJWTAud demo
 	AuthJWTLeeway 10
 
 	<Directory /var/www/html/demo/secured/>
@@ -173,11 +186,6 @@ With EC algorithm:
 
 #####AuthJWTAud
 * **Description**: The audience of delivered tokens
-* **Context**: server config, directory
-* **Mandatory**: no
-
-#####AuthJWTSub
-* **Description**: The subject of delivered tokens
 * **Context**: server config, directory
 * **Mandatory**: no
 

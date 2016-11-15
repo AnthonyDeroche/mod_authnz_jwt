@@ -1,4 +1,7 @@
-
+v1.0
+- Added directives AuthJWTFormUsername, AuthJWTFormPassword, AuthJWTAttributeUsername
+- Delete AuthJWTSub and sub check
+- Add authorization based on claims (Require jwt-claim and Require jwt-claim-array)
 
 
 v0.2
