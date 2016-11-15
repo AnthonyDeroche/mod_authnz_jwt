@@ -4,6 +4,9 @@ Authentication module for Apache httpd with JSON web tokens (JWT).
 
 More on JWT : https://jwt.io/
 
+Supported algorithms : HS256, HS384, HS512, RS256, RS384, RS512, ES256, ES384, ES512
+Supported checks : iss, aud, exp, nbf
+
 This module is able to deliver JSON web tokens containing all public fields (iss, aud, sub, iat, nbf, exp), and the private field "user". Authentication process is carried out by an authentication provider and specified by the AuthJWTProvider directive.
 
 On the other hand, this module is able to check validity of token based on its signature, and on its public fields. If the token is valid, then the user is authenticated and can be used by an authorization provider with the directive "Require valid-user" to authorize or not the request.
@@ -14,12 +17,6 @@ Although this module is able to deliver valid tokens, it may be used to check to
 
 - libjwt (https://github.com/benmcollins/libjwt)
 - Apache development package (apache2-dev on Debian/Ubuntu and httpd-devel on CentOS/Fedora)
-
-## Roadmap
-
-- Authorization based on token claims
-- Possibility to ignore checks on exp, nbf, iss, aud, sub
-- Handle merge confs
 
 ## Quick start
 
@@ -61,6 +58,11 @@ With HMAC algorithm:
 <VirtualHost *:80>
 	ServerName deroche.me
 	DocumentRoot /var/www/html/
+
+	# default values
+	AuthJWTFormUsername user
+	AuthJWTFormPassword password
+	AuthJWTAttributeUsername user
 	
 	AuthJWTSignatureAlgorithm HS256
 	AuthJWTSignatureSharedSecret CHANGEME
@@ -94,6 +96,11 @@ With EC algorithm:
 <VirtualHost *:80>
 	ServerName deroche.me
 	DocumentRoot /var/www/html/
+
+	# default values
+	AuthJWTFormUsername user
+	AuthJWTFormPassword password
+	AuthJWTAttributeUsername user
 	
 	AuthJWTSignatureAlgorithm ES256
 	AuthJWTSignaturePublicKeyFile /etc/pki/auth_pub.pem
@@ -192,6 +199,23 @@ With EC algorithm:
 * **Default**: 0
 * **Mandatory**: no
 
+#####AuthJWTFormUsername
+* **Description**:The name of the field containing the username in authentication process
+* **Context**: server config, directory
+* **Default**: user
+* **Mandatory**: no
+
+#####AuthJWTFormPassword
+* **Description**:The name of the field containing the password in authentication process
+* **Context**: server config, directory
+* **Default**: password
+* **Mandatory**: no
+
+#####AuthJWTAttributeUsername
+* **Description**:The name of the attribute containing the username in the token (used for authorization as well as token generation)
+* **Context**: server config, directory
+* **Default**: user
+* **Mandatory**: no
 
 ## Demo
 <a href="https://anthony.deroche.me/demo/jwt.php" target="_blank">https://anthony.deroche.me/demo/jwt.php</a>

@@ -79,9 +79,6 @@ typedef struct {
 	const char* iss;
 	int iss_set;
 
-	const char* sub;
-	int sub_set;
-
 	const char* aud;
 	int aud_set;
 
@@ -105,7 +102,7 @@ typedef enum {
 	dir_signature_private_key_file,
 	dir_exp_delay, 
 	dir_nbf_delay, 
-	dir_iss, dir_sub, 
+	dir_iss,
 	dir_aud, 
 	dir_leeway,
 	dir_form_username,
@@ -175,8 +172,6 @@ static const command_rec auth_jwt_cmds[] =
 					 "The file containing private key used to sign tokens"),
    	AP_INIT_TAKE1("AuthJWTIss", set_jwt_param, (void *)dir_iss, RSRC_CONF|OR_AUTHCFG,
 					 "The issuer of delievered tokens"),
-   	AP_INIT_TAKE1("AuthJWTSub", set_jwt_param, (void *)dir_sub, RSRC_CONF|OR_AUTHCFG,
-					 "The subject of delivered tokens"),
    	AP_INIT_TAKE1("AuthJWTAud", set_jwt_param, (void *)dir_aud, RSRC_CONF|OR_AUTHCFG,
 					 "The audience of delivered tokens"),
    	AP_INIT_TAKE1("AuthJWTExpDelay", set_jwt_int_param, (void *)dir_exp_delay, RSRC_CONF|OR_AUTHCFG,
@@ -188,9 +183,9 @@ static const command_rec auth_jwt_cmds[] =
    	AP_INIT_ITERATE("AuthJWTProvider", add_authn_provider, NULL, OR_AUTHCFG,
 				"Specify the auth providers for a directory or location"),
    	AP_INIT_TAKE1("AuthJWTFormUsername", set_jwt_param, (void *)dir_form_username, RSRC_CONF|OR_AUTHCFG,
-					 "The name of the field containg the username in authentication process"),
+					 "The name of the field containing the username in authentication process"),
    	AP_INIT_TAKE1("AuthJWTFormPassword", set_jwt_param, (void *)dir_form_password, RSRC_CONF|OR_AUTHCFG,
-					 "The name of the field containg the password in authentication process"),
+					 "The name of the field containing the password in authentication process"),
    	AP_INIT_TAKE1("AuthJWTAttributeUsername", set_jwt_param, (void *)dir_attribute_username, RSRC_CONF|OR_AUTHCFG,
 					 "The name of the attribute containing the username in the token"),
 	{NULL}
@@ -216,7 +211,6 @@ static void *create_auth_jwt_dir_config(apr_pool_t *p, char *d){
 	conf->leeway_set = 0;
 	conf->iss_set = 0;
 	conf->aud_set = 0;
-	conf->sub_set = 0;
 	conf->form_username_set=0;
 	conf->form_password_set=0;
 	conf->attribute_username_set=0;
@@ -238,7 +232,6 @@ static void *create_auth_jwt_config(apr_pool_t * p, server_rec *s){
 	conf->leeway_set = 0;
 	conf->iss_set = 0;
 	conf->aud_set = 0;
-	conf->sub_set = 0;
 	conf->form_username_set=0;
 	conf->form_password_set=0;
 	conf->attribute_username_set=0;
@@ -270,8 +263,6 @@ static void* merge_auth_jwt_dir_config(apr_pool_t *p, void* basev, void* addv){
 	new->leeway_set = base->leeway_set || add->leeway_set;
 	new->iss = (add->iss_set == 0) ? base->iss : add->iss;
 	new->iss_set = base->iss_set || add->iss_set;
-	new->sub = (add->sub_set == 0) ? base->sub : add->sub;
-	new->sub_set = base->sub_set || add->sub_set;
 	new->aud = (add->aud_set == 0) ? base->aud : add->aud;
 	new->aud_set = base->aud_set || add->aud_set;
 	new->form_username = (add->form_username_set == 0) ? base->form_username : add->form_username;
@@ -360,15 +351,6 @@ static void* get_config_value(request_rec *r, jwt_directive directive){
 				value = (void*)dconf->aud;
 			}else if(sconf->iss_set && sconf->aud){
 				value = (void*)sconf->aud;
-			}else{
-				return NULL;
-			}
-			break;
-		case dir_sub:
-			if(dconf->sub_set && dconf->sub){
-				value = (void*)dconf->sub;
-			}else if(sconf->sub_set && sconf->sub){
-				value = (void*)sconf->sub;
 			}else{
 				return NULL;
 			}
@@ -513,10 +495,6 @@ static const char *set_jwt_param(cmd_parms * cmd, void* config, const char* valu
 		case dir_aud:
 			conf->aud = value;
 			conf->aud_set = 1;
-		break;
-		case dir_sub:
-			conf->sub = value;
-			conf->sub_set = 1;
 		break;
 		case dir_form_username:
 			conf->form_username = value;
@@ -781,7 +759,6 @@ static int create_token(request_rec *r, char** token_str, const char* username){
 
 	char* iss = (char *)get_config_value(r, dir_iss);
 	char* aud = (char *)get_config_value(r, dir_aud);
-	char* sub = (char *)get_config_value(r, dir_sub);
 	int* exp_delay_ptr = (int*)get_config_value(r, dir_exp_delay);
 	int* nbf_delay_ptr = (int*)get_config_value(r, dir_nbf_delay);
 
@@ -841,10 +818,6 @@ static int create_token(request_rec *r, char** token_str, const char* username){
 
 	if(iss){
 		token_add_claim(token, "iss", iss);
-	}
-
-	if(sub){
-		token_add_claim(token, "sub", sub);
 	}
 
 	if(aud){
@@ -1165,7 +1138,6 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
 
 	const char* iss_config = (char *)get_config_value(r, dir_iss);
 	const char* aud_config = (char *)get_config_value(r, dir_aud);
-	const char* sub_config = (char *)get_config_value(r, dir_sub);
 	int leeway = *(int*)get_config_value(r, dir_leeway);
 
 	const char* iss_to_check = token_get_claim(*jwt, "iss");
@@ -1182,15 +1154,6 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
 		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55514)"Token audience does not match with configured audience");
 		apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
 		"Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Audience is not valid\"",
-		NULL));
-		return HTTP_UNAUTHORIZED;
-	}
-
-	const char* sub_to_check = token_get_claim(*jwt, "sub");
-	if(sub_config && sub_to_check && strcmp(sub_config, sub_to_check)!=0){
-		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55515)"Token subject does not match with configured subject");
-		apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
-		"Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Subject is not valid\"",
 		NULL));
 		return HTTP_UNAUTHORIZED;
 	}
