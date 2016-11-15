@@ -50,6 +50,18 @@ openssl genpkey -algorit RSA -out rsa-priv.pem -pkeyopt rsa_keygen_bits:4096
 openssl rsa -pubout -in rsa-priv.pem -out rsa-pub.pem
 ~~~~
 
+### Authorization
+
+You can use the directive Require jwt-claim key1=value1 key2=value2. Putting multiple keys/values in the same require results in an OR. You can use RequireAny and RequireAll directives to be more precise in your rules. 
+
+In case your key is an array, you can use the directive Require jwt-claim-array key1=value1 to test that "value1" is contained in the array pointed by the key "key1".
+
+Examples:
+~~~~
+Require jwt-claim user=toto
+Require jwt-claim-array groups=group1
+~~~~
+
 ## Configuration examples
 
 This configuration is given for tests purpose. Remember to always use TLS in production.
