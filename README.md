@@ -5,6 +5,7 @@ Authentication module for Apache httpd with JSON web tokens (JWT).
 More on JWT : https://jwt.io/
 
 Supported algorithms : HS256, HS384, HS512, RS256, RS384, RS512, ES256, ES384, ES512
+
 Supported checks : iss, aud, exp, nbf
 
 This module is able to deliver JSON web tokens containing all public fields (iss, aud, sub, iat, nbf, exp), and the private field "user". Authentication process is carried out by an authentication provider and specified by the AuthJWTProvider directive.
@@ -69,7 +70,7 @@ With HMAC algorithm:
 	AuthJWTExpDelay 1800
 	AuthJWTNbfDelay 0
 	AuthJWTIss deroche.me
-	AuthJWTSub jwt-demo
+	AuthJWTAud demo
 	AuthJWTLeeway 10
 
 	<Directory /var/www/html/demo/secured/>
@@ -108,7 +109,7 @@ With EC algorithm:
 	AuthJWTExpDelay 1800
 	AuthJWTNbfDelay 0
 	AuthJWTIss deroche.me
-	AuthJWTSub jwt-demo
+	AuthJWTAud demo
 	AuthJWTLeeway 10
 
 	<Directory /var/www/html/demo/secured/>
@@ -173,11 +174,6 @@ With EC algorithm:
 
 #####AuthJWTAud
 * **Description**: The audience of delivered tokens
-* **Context**: server config, directory
-* **Mandatory**: no
-
-#####AuthJWTSub
-* **Description**: The subject of delivered tokens
 * **Context**: server config, directory
 * **Mandatory**: no
 
