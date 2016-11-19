@@ -2,6 +2,8 @@
 
 Authentication module for Apache httpd with JSON web tokens (JWT).
 
+[![Build Status](https://travis-ci.org/AnthonyDeroche/mod_authnz_jwt.svg?branch=development)](https://travis-ci.org/AnthonyDeroche/mod_authnz_jwt)
+
 More on JWT : https://jwt.io/
 
 Supported algorithms : HS256, HS384, HS512, RS256, RS384, RS512, ES256, ES384, ES512

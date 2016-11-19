@@ -3,3 +3,4 @@
 *.slo
 *.la
 .libs/*
+tests/__pycache__/*
