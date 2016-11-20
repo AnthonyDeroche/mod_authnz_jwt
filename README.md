@@ -2,11 +2,15 @@
 
 Authentication module for Apache httpd with JSON web tokens (JWT).
 
+[![Build Status](https://travis-ci.org/AnthonyDeroche/mod_authnz_jwt.svg?branch=master)](https://travis-ci.org/AnthonyDeroche/mod_authnz_jwt)
+
 More on JWT : https://jwt.io/
 
 Supported algorithms : HS256, HS384, HS512, RS256, RS384, RS512, ES256, ES384, ES512
 
-Supported checks : iss, aud, exp, nbf
+Built-in checks : iss, aud, exp, nbf
+
+Configurable checks : every claims contained in the token (only string and array)
 
 This module is able to deliver JSON web tokens containing all public fields (iss, aud, sub, iat, nbf, exp), and the private field "user". Authentication process is carried out by an authentication provider and specified by the AuthJWTProvider directive.
 
@@ -50,6 +54,60 @@ openssl genpkey -algorit RSA -out rsa-priv.pem -pkeyopt rsa_keygen_bits:4096
 openssl rsa -pubout -in rsa-priv.pem -out rsa-pub.pem
 ~~~~
 
+### Authentication
+
+The common workflow is to authenticate against a token service using for instance username/password. Then we reuse this token to authenticate our next requests as long as the token remains valid.
+
+#### Using username/password
+
+You can configure the module to deliver a JWT if your username/password is correct. Use "AuthJWTProvider" to configure which providers will be used to authenticate the user. 
+
+Authentication modules are for instance: 
+- mod_authn_file        (https://httpd.apache.org/docs/2.4/mod/mod_authn_file.html)
+- mod_authn_dbd         (https://httpd.apache.org/docs/2.4/mod/mod_authn_dbd.html)
+- mod_authn_dbm         (https://httpd.apache.org/docs/2.4/mod/mod_authn_dbm.html)
+- mod_authn_socache     (https://httpd.apache.org/docs/2.4/mod/mod_authn_socache.html)
+- mod_authnz_ldap       (https://httpd.apache.org/docs/2.4/mod/mod_authnz_ldap.html)
+- mod_authnz_fcgi       (https://httpd.apache.org/docs/2.4/mod/mod_authnz_fcgi.html)
+- mod_authnz_external   (https://code.google.com/archive/p/mod-auth-external/)
+- mod_authn_anon        (https://httpd.apache.org/docs/2.4/mod/mod_authn_anon.html)
+
+The delivered token will contain your username in a field named "user" (See AuthJWTAttributeUsername to override this value) as well as public fields exp, iat, nbf and possibly iss and aud according to the configuration.
+
+A minimal configuration might be:
+~~~~
+AuthJWTSignatureAlgorithm HS256
+AuthJWTSignatureSharedSecret CHANGEME
+AuthJWTIss example.com
+<Location /demo/login>
+	SetHandler jwt-login-handler
+	AuthJWTProvider file
+	AuthUserFile /var/www/jwt.htpasswd
+</Location>
+~~~~
+
+#### Using a JWT
+
+A secured area can be accessed if the provided JWT is valid. JWT must be set in Authorization header. Its value must be "Bearer <jwt>".
+
+If the signature is correct and fields are correct, then a secured location can be accessed.
+
+Token must not be expired (exp), not processed too early (nbf), and issuer/audience must match the configuration.
+
+A minimal configuration might be:
+~~~~
+AuthJWTSignatureAlgorithm HS256
+AuthJWTSignatureSharedSecret CHANGEME
+AuthJWTIss example.com
+<Directory /var/www/html/demo/secured/>
+	AllowOverride None
+	AuthType jwt
+	AuthName "private area"
+	Require valid-user
+</Directory>
+~~~~
+
+
 ### Authorization
 
 You can use the directive Require jwt-claim key1=value1 key2=value2. Putting multiple keys/values in the same require results in an OR. You can use RequireAny and RequireAll directives to be more precise in your rules. 
@@ -58,9 +116,18 @@ In case your key is an array, you can use the directive Require jwt-claim-array 
 
 Examples:
 ~~~~
-Require jwt-claim user=toto
-Require jwt-claim-array groups=group1
+AuthJWTSignatureAlgorithm HS256
+AuthJWTSignatureSharedSecret CHANGEME
+AuthJWTIss example.com
+<Directory /var/www/html/demo/secured/>
+	AllowOverride None
+	AuthType jwt
+	AuthName "private area"
+	Require jwt-claim user=toto
+    Require jwt-claim-array groups=group1
+</Directory>
 ~~~~
+
 
 ## Configuration examples
 
@@ -69,7 +136,7 @@ This configuration is given for tests purpose. Remember to always use TLS in pro
 With HMAC algorithm:
 ~~~~
 <VirtualHost *:80>
-	ServerName deroche.me
+	ServerName example.com
 	DocumentRoot /var/www/html/
 
 	# default values
@@ -81,7 +148,7 @@ With HMAC algorithm:
 	AuthJWTSignatureSharedSecret CHANGEME
 	AuthJWTExpDelay 1800
 	AuthJWTNbfDelay 0
-	AuthJWTIss deroche.me
+	AuthJWTIss example.com
 	AuthJWTAud demo
 	AuthJWTLeeway 10
 
@@ -107,7 +174,7 @@ With HMAC algorithm:
 With EC algorithm:
 ~~~~
 <VirtualHost *:80>
-	ServerName deroche.me
+	ServerName example.com
 	DocumentRoot /var/www/html/
 
 	# default values
@@ -120,7 +187,7 @@ With EC algorithm:
 	AuthJWTSignaturePrivateKeyFile /etc/pki/auth_priv.pem
 	AuthJWTExpDelay 1800
 	AuthJWTNbfDelay 0
-	AuthJWTIss deroche.me
+	AuthJWTIss example.com
 	AuthJWTAud demo
 	AuthJWTLeeway 10
 
@@ -180,7 +247,7 @@ With EC algorithm:
 * **Mandatory**: no
 
 #####AuthJWTIss
-* **Description**: The issuer of delievered tokens
+* **Description**: The issuer of delivered tokens
 * **Context**: server config, directory
 * **Mandatory**: no
 

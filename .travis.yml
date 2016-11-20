@@ -1,0 +1,36 @@
+dist: trusty
+sudo: required
+language: python
+python: 
+  - "3.5"
+addons:
+  apt:
+    packages:
+    - automake
+    - libtool
+    - pkg-config
+    - autoconf
+    - libssl-dev
+    - check
+    - libjansson-dev
+    - git
+    - apache2
+    - apache2-dev
+before_install:
+  - git clone https://github.com/benmcollins/libjwt
+  - cd libjwt
+  - git checkout tags/v1.7.2 -q 
+  - autoreconf -i
+  - ./configure 
+  - make 
+  - sudo make install 
+  - sudo ldconfig
+  - cd ..
+install:
+  - make
+  - sudo make install
+before_script:
+  - pip install pyjwt requests
+  - chmod ugo+x tests/debian_tests.sh
+  - cd tests
+script: ./debian_tests.sh
