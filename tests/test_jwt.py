@@ -2,6 +2,7 @@ import unittest
 import requests
 import jwt
 import json
+import sys
 from contextlib import contextmanager
 from functools import wraps
 
@@ -59,10 +60,10 @@ class TestJWT(unittest.TestCase):
 
     def http_post(self, url, data, token=None, headers=None):
         if headers is None:
-            headers = {"Content-Type":"application/json"}
-        if token is not None:
-            headers = {"Authorization", "Bearer %s" % token}
-        r = requests.post(url, data=data)
+            headers = {}
+        if "Authorization" not in headers and token is not None:
+            headers["Authorization"] = "Bearer %s" % token
+        r = requests.post(url, data=data, headers=headers)
         return r.status_code, r.content.decode('utf-8'), r.headers
 
     def decode_jwt(self, token):
