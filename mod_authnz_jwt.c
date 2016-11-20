@@ -148,7 +148,9 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
 static int token_decode(jwt_t **jwt, const char* token, const unsigned char *key);
 static int token_new(jwt_t **jwt);
 static const char* token_get_claim(jwt_t *token, const char* claim);
+static long token_get_claim_int(jwt_t *token, const char* claim);
 static int token_add_claim(jwt_t *jwt, const char *claim, const char *val);
+static int token_add_claim_int(jwt_t *jwt, const char *claim, long val);
 static void token_free(jwt_t *token);
 static int token_set_alg(jwt_t *jwt, jwt_alg_t alg, const unsigned char *key);
 static char *token_encode_str(jwt_t *jwt);
@@ -800,21 +802,18 @@ static int create_token(request_rec *r, char** token_str, const char* username){
 	time_t exp = now;
 	time_t nbf = now;
 
-	char time_buffer_str[11];
+
 	if(exp_delay_ptr && *exp_delay_ptr >= 0){
 		exp += *exp_delay_ptr;
-		sprintf(time_buffer_str, "%ld", exp);
-		token_add_claim(token, "exp", time_buffer_str);
+		token_add_claim_int(token, "exp", (long)exp);
 	}
 
 	if(nbf_delay_ptr && *nbf_delay_ptr >= 0){
 		nbf += *nbf_delay_ptr;
-		sprintf(time_buffer_str, "%ld", nbf);
-		token_add_claim(token, "nbf", time_buffer_str);
+		token_add_claim_int(token, "nbf", (long)nbf);
 	}
 
-	sprintf(time_buffer_str, "%ld", iat);
-	token_add_claim(token, "iat", time_buffer_str);
+	token_add_claim_int(token, "iat", (long)iat);
 
 	if(iss){
 		token_add_claim(token, "iss", iss);
@@ -1159,11 +1158,10 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
 	}
 
 	/* check exp */
-	const char* exp_str = token_get_claim(*jwt, "exp");
-	if(exp_str){
-		int exp_int = atoi(exp_str);
+	long exp = token_get_claim_int(*jwt, "exp");
+	if(exp>0){
 		time_t now = time(NULL);
-		if (exp_int + leeway < now){
+		if (exp + leeway < now){
 			/* token expired */
 			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55516)"Token expired");
 			apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
@@ -1181,11 +1179,10 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
 	}
 
 	/* check nbf */
-	const char* nbf_str = token_get_claim(*jwt, "nbf");
-	if(nbf_str){
-		int nbf_int = atoi(nbf_str);
+	long nbf = token_get_claim_int(*jwt, "nbf");
+	if(nbf>0){
 		time_t now = time(NULL);
-		if (nbf_int - leeway > now){
+		if (nbf - leeway > now){
 			/* token is too recent to be processed */
 			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55518)"Nbf check failed. Token can't be processed now");
 			apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
@@ -1209,9 +1206,18 @@ static int token_add_claim(jwt_t *jwt, const char *claim, const char *val){
 	return jwt_add_grant(jwt, claim, val);
 }
 
+static int token_add_claim_int(jwt_t *jwt, const char *claim, long val){
+	return jwt_add_grant_int(jwt, claim, val);
+}
+
 static const char* token_get_claim(jwt_t *token, const char* claim){
 	return jwt_get_grant(token, claim);
 }
+
+static long token_get_claim_int(jwt_t *token, const char* claim){
+	return jwt_get_grant_int(token, claim);
+}
+
 
 static char** token_get_claim_array_of_string(request_rec *r, jwt_t *token, const char* claim, int* len){
 	json_t* array = token_get_claim_array(r, token, claim);

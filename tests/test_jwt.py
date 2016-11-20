@@ -20,6 +20,7 @@ class TestJWT(unittest.TestCase):
     JWT_NBF_DELAY = 0
     JWT_ISS = "hmac.testjwt.local"
     JWT_AUD = "tests"
+    JWT_LEEWAY = 10
     ALGORITHMS = ["HS256", "HS384", "HS512"]
     # ALGORITHMS = ["HS256", "HS384", "HS512", "RS256", "RS384", "RS512", "ES256", "ES384", "ES512"]
 

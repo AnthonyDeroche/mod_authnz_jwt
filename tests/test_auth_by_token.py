@@ -53,7 +53,6 @@ class TestAuthByToken(TestJWT):
         self.assertEqual(code, 401)
         self.assertEqual(headers["WWW-Authenticate"], 'Bearer realm="private area", error="invalid_token", error_description="Expiration is missing in token"')
 
-    @unittest.expectedFailure
     @TestJWT.with_all_algorithms()
     def test_invalid_nbf_should_fail(self, alg, key, secured_url):
         token = self.encode_jwt({"iss":self.JWT_ISS, "aud":self.JWT_AUD, "user":"toto", "iat":int(time.time()), "nbf":int(time.time())+1000, "exp":int(time.time())+1000}, key, alg)
@@ -61,13 +60,24 @@ class TestAuthByToken(TestJWT):
         self.assertEqual(code, 401)
         self.assertEqual(headers["WWW-Authenticate"], 'Bearer realm="private area", error="invalid_token", error_description="Token can\'t be processed now due to nbf field"')
 
-    @unittest.expectedFailure
     @TestJWT.with_all_algorithms()
     def test_invalid_exp_should_fail(self, alg, key, secured_url):
         token = self.encode_jwt({"iss":self.JWT_ISS, "aud":self.JWT_AUD, "user":"toto", "iat":int(time.time()), "nbf":int(time.time()), "exp":int(time.time())-1000}, key, alg)
         code, content, headers = self.http_get(secured_url, token=token)
         self.assertEqual(code, 401)
         self.assertEqual(headers["WWW-Authenticate"], 'Bearer realm="private area", error="invalid_token", error_description="Token expired"')
+
+    @TestJWT.with_all_algorithms()
+    def test_with_leeway_should_success(self, alg, key, secured_url):
+        token = self.encode_jwt({"iss":self.JWT_ISS, "aud":self.JWT_AUD, "user":"toto", "iat":int(time.time())-1000, "nbf":int(time.time())-1000, "exp":int(time.time())-self.JWT_LEEWAY+1}, key, alg)
+        code, content, headers = self.http_get(secured_url, token=token)
+        self.assertEqual(code, 200)
+
+    @TestJWT.with_all_algorithms()
+    def test_should_success(self, alg, key, secured_url):
+        token = self.encode_jwt({"iss":self.JWT_ISS, "aud":self.JWT_AUD, "user":"toto", "iat":int(time.time())-1000, "nbf":int(time.time())-1000, "exp":int(time.time())+10}, key, alg)
+        code, content, headers = self.http_get(secured_url, token=token)
+        self.assertEqual(code, 200)
 
     
         
