@@ -8,7 +8,9 @@ More on JWT : https://jwt.io/
 
 Supported algorithms : HS256, HS384, HS512, RS256, RS384, RS512, ES256, ES384, ES512
 
-Supported checks : iss, aud, exp, nbf
+Built-in checks : iss, aud, exp, nbf
+
+Configurable checks : every claims contained in the token (only string and array)
 
 This module is able to deliver JSON web tokens containing all public fields (iss, aud, sub, iat, nbf, exp), and the private field "user". Authentication process is carried out by an authentication provider and specified by the AuthJWTProvider directive.
 
