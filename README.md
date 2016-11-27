@@ -128,7 +128,17 @@ AuthJWTIss example.com
 </Directory>
 ~~~~
 
+### How to get authenticated user in your apps?
+If your app is directly hosted by the same Apache than the module, then you can read the environment variable "REMOTE_USER".
 
+If the apache instance on which the module is installed acts as a reverse proxy, then you need to add a header in the request (X-Remote-User for example). We use mod_rewrite to do so. 
+For your information, rewrite rules are interpreted before authentication. That's why why need a "look ahead" variable which will take its final value during the fixup phase.
+~~~~
+RewriteEngine On
+RewriteCond %{LA-U:REMOTE_USER} (.+)
+RewriteRule . - [E=RU:%1]
+RequestHeader set X-Remote-User "%{RU}e" env=RU
+~~~~
 ## Configuration examples
 
 This configuration is given for tests purpose. Remember to always use TLS in production.
