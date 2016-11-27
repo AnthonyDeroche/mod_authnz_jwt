@@ -30,7 +30,7 @@ install:
   - make
   - sudo make install
 before_script:
-  - pip install pyjwt requests
+  - pip install pyjwt requests cryptography
   - chmod ugo+x tests/debian_tests.sh
   - cd tests
 script: ./debian_tests.sh

@@ -48,6 +48,7 @@
 #define DEFAULT_FORM_USERNAME "user"
 #define DEFAULT_FORM_PASSWORD "password"
 #define DEFAULT_ATTRIBUTE_USERNAME "user"
+#define DEFAULT_SIGNATURE_ALGORITHM "HS256"
 
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  CONFIGURATION STRUCTURE ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
@@ -143,7 +144,7 @@ static int create_token(request_rec *r, char** token_str, const char* username);
 static int auth_jwt_authn_with_token(request_rec *r);
 
 static void get_encode_key(request_rec* r, const char* algorithm, unsigned char* key);
-static void get_decode_key(request_rec* r, const char* algorithm, unsigned char* key);
+static void get_decode_key(request_rec* r, unsigned char* key);
 static int token_check(request_rec *r, jwt_t **jwt, const char *token, const unsigned char *key);
 static int token_decode(jwt_t **jwt, const char* token, const unsigned char *key);
 static int token_new(jwt_t **jwt);
@@ -152,11 +153,12 @@ static long token_get_claim_int(jwt_t *token, const char* claim);
 static int token_add_claim(jwt_t *jwt, const char *claim, const char *val);
 static int token_add_claim_int(jwt_t *jwt, const char *claim, long val);
 static void token_free(jwt_t *token);
-static int token_set_alg(jwt_t *jwt, jwt_alg_t alg, const unsigned char *key);
+static int token_set_alg(request_rec *r, jwt_t *jwt, const char* alg, const unsigned char *key);
 static char *token_encode_str(jwt_t *jwt);
 static char** token_get_claim_array_of_string(request_rec* r, jwt_t *token, const char* claim, int* len);
 static json_t* token_get_claim_array(request_rec* r, jwt_t *token, const char* claim);
 static json_t* token_get_claim_json(request_rec* r, jwt_t *token, const char* claim);
+static const char* token_get_alg(jwt_t *jwt);
 
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  DECLARE DIRECTIVES ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
@@ -309,7 +311,7 @@ static void* get_config_value(request_rec *r, jwt_directive directive){
 			}else if(sconf->signature_algorithm){
 				value = (void*)sconf->signature_algorithm;
 			}else{
-				return NULL;
+				return DEFAULT_SIGNATURE_ALGORITHM;
 			}
 			break;
 		case dir_signature_shared_secret:
@@ -764,37 +766,12 @@ static int create_token(request_rec *r, char** token_str, const char* username){
 	int* exp_delay_ptr = (int*)get_config_value(r, dir_exp_delay);
 	int* nbf_delay_ptr = (int*)get_config_value(r, dir_nbf_delay);
 
-
-
-	jwt_alg_t algorithm;
-	if(!strcmp(signature_algorithm, "HS512")){
-		algorithm = JWT_ALG_HS512;
-	}else if(!strcmp(signature_algorithm, "HS384")){
-		algorithm = JWT_ALG_HS384;
-	}else if(!strcmp(signature_algorithm, "HS256")){
-		algorithm = JWT_ALG_HS256;
-	}else if(!strcmp(signature_algorithm, "RS512")){
-		algorithm = JWT_ALG_RS512;
-	}else if(!strcmp(signature_algorithm, "RS384")){
-		algorithm = JWT_ALG_RS384;
-	}else if(!strcmp(signature_algorithm, "RS256")){
-		algorithm = JWT_ALG_RS256;
-	}else if(!strcmp(signature_algorithm, "ES512")){
-		algorithm = JWT_ALG_ES512;
-	}else if(!strcmp(signature_algorithm, "ES384")){
-		algorithm = JWT_ALG_ES384;
-	}else if(!strcmp(signature_algorithm, "ES256")){
-		algorithm = JWT_ALG_ES256;
-	}else{
-		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55304)
-				  "Unknown algorithm %s", signature_algorithm);
-		return HTTP_INTERNAL_SERVER_ERROR;
-	}
-
 	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55305)
 							"auth_jwt create_token: using algorithm %s...", signature_algorithm);
 
-	token_set_alg(token, algorithm, sign_key);
+	if(token_set_alg(r, token, signature_algorithm, sign_key)!=0){
+        return HTTP_INTERNAL_SERVER_ERROR;
+    }
 	
 
 	time_t now = time(NULL);
@@ -952,11 +929,9 @@ static int auth_jwt_authn_with_token(request_rec *r){
 	char* authorization_header = (char*)apr_table_get( r->headers_in, "Authorization");
 	char* token_str;
 	
-	char* signature_algorithm = (char*)get_config_value(r, dir_signature_algorithm);
-	
-
 	unsigned char key[MAX_KEY_LEN] = { 0 };
-	get_decode_key(r, signature_algorithm, key);
+
+	get_decode_key(r, key);
 
 	if(strlen((const char*)key)==0){
 		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55403)
@@ -976,11 +951,15 @@ static int auth_jwt_authn_with_token(request_rec *r){
 		token_str = authorization_header+7;
 		jwt_t* token;
 		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55405)
-							"auth_jwt authn: checking signature with algorithm %s and fields correctness...", signature_algorithm);
+							"auth_jwt authn: checking signature and fields correctness...");
 		rv = token_check(r, &token, token_str, key);
+        
 		if(OK == rv){
 			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55406)
 							"auth_jwt authn: signature is correct");
+            const char* found_alg = token_get_alg(token);
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55405)
+							"auth_jwt authn: algorithm found is %s", found_alg);
 			const char* attribute_username = (const char*)get_config_value(r, dir_attribute_username);
 			char* maybe_user = (char *)token_get_claim(token, attribute_username);
 			if(maybe_user == NULL){
@@ -1014,11 +993,6 @@ static int auth_jwt_authn_with_token(request_rec *r){
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  TOKEN OPERATIONS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
 
 static void get_encode_key(request_rec *r, const char* signature_algorithm, unsigned char* key){
-	if(!signature_algorithm){
-		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55500)
-			"Signature algorithm is NULL. This error should not happen since a default algorithm is set");
-		return;
-	}
 
 	if(strcmp(signature_algorithm, "HS512")==0 || strcmp(signature_algorithm, "HS384")==0 || strcmp(signature_algorithm, "HS256")==0){
 		char* signature_shared_secret = (char*)get_config_value(r, dir_signature_shared_secret);
@@ -1060,30 +1034,26 @@ static void get_encode_key(request_rec *r, const char* signature_algorithm, unsi
 	}
 }
 
-static void get_decode_key(request_rec *r, const char* signature_algorithm, unsigned char* key){
-	if(!signature_algorithm){
-		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55506)
-			"Signature algorithm is NULL. This error should not happen since a default algorithm is set");
-		return;
-	}
+static void get_decode_key(request_rec *r, unsigned char* key){
+    char* signature_public_key_file = (char*)get_config_value(r, dir_signature_public_key_file);
+    char* signature_shared_secret = (char*)get_config_value(r, dir_signature_shared_secret);
 
-	if(strcmp(signature_algorithm, "HS512")==0 || strcmp(signature_algorithm, "HS384")==0 || strcmp(signature_algorithm, "HS256")==0){
-		char* signature_shared_secret = (char*)get_config_value(r, dir_signature_shared_secret);
-		if(!signature_shared_secret){
-			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55507)
-					"You must specify AuthJWTSignatureSharedSecret directive in configuration with algorithm %s", signature_algorithm);
-			return;
-		}
-		strcpy((char*)key,(const char*)signature_shared_secret);
-	}
-	else if(strcmp(signature_algorithm, "RS512")==0 || strcmp(signature_algorithm, "RS384")==0 || strcmp(signature_algorithm, "RS256")==0 || 
-			strcmp(signature_algorithm, "ES512")==0 || strcmp(signature_algorithm, "ES384")==0 || strcmp(signature_algorithm, "ES256")==0){
-		char* signature_public_key_file = (char*)get_config_value(r, dir_signature_public_key_file);
-		if(!signature_public_key_file){
-			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55508)
-					"You must specify AuthJWTSignaturePublicKeyFile directive in configuration with algorithm %s", signature_algorithm);
-			return;
-		}
+	if(!signature_shared_secret && !signature_public_key_file){
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55507)
+				"You must specify either AuthJWTSignatureSharedSecret directive or AuthJWTSignaturePublicKeyFile directive in configuration for decoding process");
+		return;
+    }
+
+    if(signature_shared_secret && signature_public_key_file){
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55507)
+				"Conflict in configuration: you must specify either AuthJWTSignatureSharedSecret directive or AuthJWTSignaturePublicKeyFile directive but not both in the same block");
+		return;
+    }
+
+    if(signature_shared_secret){
+        strcpy((char*)key,(const char*)signature_shared_secret);
+    }
+    else if(signature_public_key_file){
 		apr_status_t rv;
 		apr_file_t* key_fd = NULL;
 		rv = apr_file_open(&key_fd, signature_public_key_file, APR_READ, APR_OS_DEFAULT, r->pool);
@@ -1100,11 +1070,7 @@ static void get_decode_key(request_rec *r, const char* signature_algorithm, unsi
 			return;
 		}
 		apr_file_close(key_fd);
-	} else {
-		//unknown algorithm
-		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55511)
-					"Unknown algorithm %s", signature_algorithm);
-	}
+    }
 }
 
 static int token_new(jwt_t **jwt){
@@ -1277,8 +1243,58 @@ static json_t* token_get_claim_json(request_rec *r, jwt_t *token, const char* cl
 	return json;
 }
 
-static int token_set_alg(jwt_t *jwt, jwt_alg_t alg, const unsigned char *key){
-	return jwt_set_alg(jwt, alg, key, strlen((const char*)key));
+static int token_set_alg(request_rec *r, jwt_t *jwt, const char* signature_algorithm, const unsigned char *key){
+	jwt_alg_t algorithm;
+	if(!strcmp(signature_algorithm, "HS512")){
+		algorithm = JWT_ALG_HS512;
+	}else if(!strcmp(signature_algorithm, "HS384")){
+		algorithm = JWT_ALG_HS384;
+	}else if(!strcmp(signature_algorithm, "HS256")){
+		algorithm = JWT_ALG_HS256;
+	}else if(!strcmp(signature_algorithm, "RS512")){
+		algorithm = JWT_ALG_RS512;
+	}else if(!strcmp(signature_algorithm, "RS384")){
+		algorithm = JWT_ALG_RS384;
+	}else if(!strcmp(signature_algorithm, "RS256")){
+		algorithm = JWT_ALG_RS256;
+	}else if(!strcmp(signature_algorithm, "ES512")){
+		algorithm = JWT_ALG_ES512;
+	}else if(!strcmp(signature_algorithm, "ES384")){
+		algorithm = JWT_ALG_ES384;
+	}else if(!strcmp(signature_algorithm, "ES256")){
+		algorithm = JWT_ALG_ES256;
+	}else{
+		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55304)
+				  "Unknown algorithm %s", signature_algorithm);
+		return 1;
+	}
+	return jwt_set_alg(jwt, algorithm, key, strlen((const char*)key));
+}
+
+static const char* token_get_alg(jwt_t *jwt){
+	jwt_alg_t algorithm = jwt_get_alg(jwt);
+    switch(algorithm){
+        case JWT_ALG_HS256:
+            return "HS256";
+        case JWT_ALG_HS384:
+            return "HS384";
+        case JWT_ALG_HS512:
+            return "HS512";
+        case JWT_ALG_RS256:
+            return "RS256";
+        case JWT_ALG_RS384:
+            return "RS384";
+        case JWT_ALG_RS512:
+            return "RS512";
+        case JWT_ALG_ES256:
+            return "ES256";
+        case JWT_ALG_ES384:
+            return "ES384";
+        case JWT_ALG_ES512:
+            return "ES512";
+        default:
+            return NULL;
+    }
 }
 
 static void token_free(jwt_t *token){
