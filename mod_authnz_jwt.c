@@ -45,6 +45,10 @@
 #define FORM_SIZE 512
 #define MAX_KEY_LEN 16384
 
+#define DEFAULT_EXP_DELAY 1800
+#define DEFAULT_NBF_DELAY 0
+#define DEFAULT_LEEWAY 0
+
 #define DEFAULT_FORM_USERNAME "user"
 #define DEFAULT_FORM_PASSWORD "password"
 #define DEFAULT_ATTRIBUTE_USERNAME "user"
@@ -123,7 +127,8 @@ static void register_hooks(apr_pool_t * p);
 static const char *add_authn_provider(cmd_parms * cmd, void *config, const char *arg);
 static const char *set_jwt_param(cmd_parms * cmd, void* config, const char* value);
 static const char *set_jwt_int_param(cmd_parms * cmd, void* config, const char* value);
-static void* get_config_value(request_rec *r, jwt_directive directive);
+static const char* get_config_value(request_rec *r, jwt_directive directive);
+static const int get_config_int_value(request_rec *r, jwt_directive directive);
 
 static const char *jwt_parse_config(cmd_parms *cmd, const char *require_line, const void **parsed_require_line);
 static authz_status jwtclaim_check_authorization(request_rec *r, const char* require_args, const void *parsed_require_args);
@@ -201,10 +206,6 @@ static const command_rec auth_jwt_cmds[] =
 static void *create_auth_jwt_dir_config(apr_pool_t *p, char *d){
 	auth_jwt_config_rec *conf = (auth_jwt_config_rec*) apr_pcalloc(p, sizeof(*conf));
 	conf->dir = d;
-
-	conf->leeway = 0;
-	conf->exp_delay = 3600;
-	conf->nbf_delay = 0;
 
 	conf->signature_algorithm_set = 0;
 	conf->signature_shared_secret_set = 0;
@@ -297,46 +298,46 @@ AP_DECLARE_MODULE(auth_jwt) = {
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  FILL OUT CONF STRUCTURES ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
 
-static void* get_config_value(request_rec *r, jwt_directive directive){
+static const char* get_config_value(request_rec *r, jwt_directive directive){
 
 	auth_jwt_config_rec *dconf = (auth_jwt_config_rec *) ap_get_module_config(r->per_dir_config, &auth_jwt_module);
 
 	auth_jwt_config_rec *sconf = (auth_jwt_config_rec *) ap_get_module_config(r->server->module_config, &auth_jwt_module);
-	void* value;
+	const char* value;
 
 	switch ((jwt_directive) directive) {
 		case dir_signature_algorithm:
 			if(dconf->signature_algorithm_set && dconf->signature_algorithm){
-				value = (void*)dconf->signature_algorithm;
+				value = dconf->signature_algorithm;
 			}else if(sconf->signature_algorithm){
-				value = (void*)sconf->signature_algorithm;
+				value = sconf->signature_algorithm;
 			}else{
 				return DEFAULT_SIGNATURE_ALGORITHM;
 			}
 			break;
 		case dir_signature_shared_secret:
 			if(dconf->signature_shared_secret_set && dconf->signature_shared_secret){
-				value = (void*)dconf->signature_shared_secret;
+				value = dconf->signature_shared_secret;
 			}else if(sconf->signature_shared_secret_set && sconf->signature_shared_secret){
-				value = (void*)sconf->signature_shared_secret;
+				value = sconf->signature_shared_secret;
 			}else{
 				return NULL;
 			}
 			break;
 		case dir_signature_public_key_file:
 			if(dconf->signature_public_key_file_set && dconf->signature_public_key_file){
-				value = (void*)dconf->signature_public_key_file;
+				value = dconf->signature_public_key_file;
 			}else if(sconf->signature_public_key_file_set && sconf->signature_public_key_file){
-				value = (void*)sconf->signature_public_key_file;
+				value = sconf->signature_public_key_file;
 			}else{
 				return NULL;
 			}
 			break;
 		case dir_signature_private_key_file:
 			if(dconf->signature_private_key_file_set && dconf->signature_private_key_file){
-				value = (void*)dconf->signature_private_key_file;
+				value = dconf->signature_private_key_file;
 			}else if(sconf->signature_private_key_file_set && sconf->signature_private_key_file){
-				value = (void*)sconf->signature_private_key_file;
+				value = sconf->signature_private_key_file;
 			}else{
 				return NULL;
 			}
@@ -352,63 +353,36 @@ static void* get_config_value(request_rec *r, jwt_directive directive){
 			break;
 		case dir_aud:
 			if(dconf->aud_set && dconf->aud){
-				value = (void*)dconf->aud;
+				value = dconf->aud;
 			}else if(sconf->iss_set && sconf->aud){
-				value = (void*)sconf->aud;
+				value = sconf->aud;
 			}else{
 				return NULL;
 			}
 			break;
-		case dir_exp_delay:
-			if(dconf->exp_delay_set){
-				value = (void*)&dconf->exp_delay;
-			}else if(sconf->exp_delay_set){
-				value = (void*)&sconf->exp_delay;
-			}else{
-				return NULL;
-			}
-			break;
-		case dir_nbf_delay:
-			if(dconf->nbf_delay_set){
-				value = (void*)&dconf->nbf_delay;
-			}else if(sconf->nbf_delay_set){
-				value = (void*)&sconf->nbf_delay;
-			}else{
-				return NULL;
-			}
-			break;
-		case dir_leeway:
-			if(dconf->leeway){
-				value = (void*)&dconf->leeway;
-			}else if(sconf->leeway_set){
-				value = (void*)&sconf->leeway;
-			}else{
-				return NULL;
-			}
-			break;
-		case dir_form_username:
+ 		case dir_form_username:
 			if(dconf->form_username_set && dconf->form_username){
-				value = (void*)dconf->form_username;
+				value = dconf->form_username;
 			}else if(sconf->form_username_set && sconf->form_username){
-				value = (void*)sconf->form_username;
+				value = sconf->form_username;
 			}else{
 				return DEFAULT_FORM_USERNAME;
 			}
 			break;
 		case dir_form_password:
 			if(dconf->form_password_set && dconf->form_password){
-				value = (void*)dconf->form_password;
+				value = dconf->form_password;
 			}else if(sconf->form_password_set && sconf->form_password){
-				value = (void*)sconf->form_password;
+				value = sconf->form_password;
 			}else{
 				return DEFAULT_FORM_PASSWORD;
 			}
 			break;
 		case dir_attribute_username:
 			if(dconf->attribute_username_set && dconf->attribute_username){
-				value = (void*)dconf->attribute_username;
+				value = dconf->attribute_username;
 			}else if(sconf->attribute_username_set && sconf->attribute_username){
-				value = (void*)sconf->attribute_username;
+				value = sconf->attribute_username;
 			}else{
 				return DEFAULT_ATTRIBUTE_USERNAME;
 			}
@@ -417,6 +391,43 @@ static void* get_config_value(request_rec *r, jwt_directive directive){
 			return NULL;
 	}
 	return value;
+}
+
+static const int get_config_int_value(request_rec *r, jwt_directive directive){
+    auth_jwt_config_rec *dconf = (auth_jwt_config_rec *) ap_get_module_config(r->per_dir_config, &auth_jwt_module);
+
+	auth_jwt_config_rec *sconf = (auth_jwt_config_rec *) ap_get_module_config(r->server->module_config, &auth_jwt_module);
+    int value;
+    switch ((jwt_directive) directive) {
+        case dir_exp_delay:
+            if(dconf->exp_delay_set){
+                    value = dconf->exp_delay;
+            }else if(sconf->exp_delay_set){
+                    value = sconf->exp_delay;
+            }else{
+                    return DEFAULT_EXP_DELAY;
+            }
+            break;
+        case dir_nbf_delay:
+            if(dconf->nbf_delay_set){
+                    value = dconf->nbf_delay;
+            }else if(sconf->nbf_delay_set){
+                    value = sconf->nbf_delay;
+            }else{
+                    return DEFAULT_NBF_DELAY;
+            }
+            break;
+        case dir_leeway:
+            if(dconf->leeway){
+                    value = dconf->leeway;
+            }else if(sconf->leeway_set){
+                    value = sconf->leeway;
+            }else{
+                    return DEFAULT_LEEWAY;
+            }
+            break;
+    }
+    return (const int)value;
 }
 
 
@@ -763,8 +774,8 @@ static int create_token(request_rec *r, char** token_str, const char* username){
 
 	char* iss = (char *)get_config_value(r, dir_iss);
 	char* aud = (char *)get_config_value(r, dir_aud);
-	int* exp_delay_ptr = (int*)get_config_value(r, dir_exp_delay);
-	int* nbf_delay_ptr = (int*)get_config_value(r, dir_nbf_delay);
+	int exp_delay = get_config_int_value(r, dir_exp_delay);
+	int nbf_delay = get_config_int_value(r, dir_nbf_delay);
 
 	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55305)
 							"auth_jwt create_token: using algorithm %s...", signature_algorithm);
@@ -780,13 +791,13 @@ static int create_token(request_rec *r, char** token_str, const char* username){
 	time_t nbf = now;
 
 
-	if(exp_delay_ptr && *exp_delay_ptr >= 0){
-		exp += *exp_delay_ptr;
+	if(exp_delay >= 0){
+		exp += exp_delay;
 		token_add_claim_int(token, "exp", (long)exp);
 	}
 
-	if(nbf_delay_ptr && *nbf_delay_ptr >= 0){
-		nbf += *nbf_delay_ptr;
+	if(nbf_delay >= 0){
+		nbf += nbf_delay;
 		token_add_claim_int(token, "nbf", (long)nbf);
 	}
 
@@ -1103,7 +1114,7 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
 
 	const char* iss_config = (char *)get_config_value(r, dir_iss);
 	const char* aud_config = (char *)get_config_value(r, dir_aud);
-	int leeway = *(int*)get_config_value(r, dir_leeway);
+	int leeway = get_config_int_value(r, dir_leeway);
 
 	const char* iss_to_check = token_get_claim(*jwt, "iss");
 	if(iss_config && iss_to_check && strcmp(iss_config, iss_to_check)!=0){
