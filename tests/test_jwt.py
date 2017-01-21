@@ -67,6 +67,8 @@ class TestJWT(unittest.TestCase):
     def http_post(self, url, data, token=None, headers=None):
         if headers is None:
             headers = {}
+        if "Content-Type" not in headers:
+            headers["Content-Type"] = "application/x-www-form-urlencoded"
         if "Authorization" not in headers and token is not None:
             headers["Authorization"] = "Bearer %s" % token
         r = requests.post(url, data=data, headers=headers)
