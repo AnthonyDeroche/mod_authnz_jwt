@@ -37,10 +37,14 @@ class TestJWT(unittest.TestCase):
                         key = cls.HMAC_SHARED_SECRET
                         secured_url = cls.HMAC_SECURED_URL
                     elif alg in ("RS256", "RS384", "RS512"):
-                        key = open("/tmp/rsa-priv.pem").read()
+                        f = open("/opt/mod_jwt_tests/rsa-priv.pem")
+                        key = f.read()
+                        f.close()
                         secured_url = cls.RSA_SECURED_URL
                     elif alg in ("ES256", "ES384", "ES512"):
-                        key = open("/tmp/ec-priv.pem").read()
+                        f = open("/opt/mod_jwt_tests/ec-priv.pem")
+                        key = f.read()
+                        f.close()
                         secured_url = cls.EC_SECURED_URL
                     with _self.subTest(alg=alg, key=key):
                         func(_self, alg, key, secured_url)

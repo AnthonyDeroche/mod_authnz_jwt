@@ -1,2 +1,3 @@
 requests==2.9.1
 PyJWT==1.4.2
+cryptography==1.7.1

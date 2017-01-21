@@ -648,7 +648,7 @@ static authz_status jwtclaimarray_check_authorization(request_rec *r, const char
 		int len;
 		char** array_values = token_get_claim_array_of_string(r, jwt, w, &len);
 		if(array_values != NULL){
-			int i,j;
+			int i;
 			for(i=0;i<len;i++){
 				if(apr_strnatcasecmp((const char*)array_values[i], (const char*)value) == 0){
 					ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55111)
@@ -1026,8 +1026,9 @@ static void get_encode_key(request_rec *r, const char* signature_algorithm, unsi
 		apr_file_t* key_fd = NULL;
 		rv = apr_file_open(&key_fd, signature_private_key_file, APR_READ, APR_OS_DEFAULT, r->pool);
 		if(rv!=APR_SUCCESS){
+                        char error_buf[50];
 			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55503)
-					 "Unable to open the file %s", signature_private_key_file);
+					 "Unable to open the file %s: %s", signature_private_key_file, apr_strerror(rv, error_buf, 50));
 			return;
 		}
 		apr_size_t key_len;
@@ -1067,11 +1068,12 @@ static void get_decode_key(request_rec *r, unsigned char* key){
     else if(signature_public_key_file){
 		apr_status_t rv;
 		apr_file_t* key_fd = NULL;
-		rv = apr_file_open(&key_fd, signature_public_key_file, APR_READ, APR_OS_DEFAULT, r->pool);
+		rv = apr_file_open(&key_fd, signature_public_key_file, APR_FOPEN_READ, APR_FPROT_OS_DEFAULT, r->pool);
 		if(rv!=APR_SUCCESS){
-			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55509)
-					"Unable to open the file %s", signature_public_key_file);
-			return;
+                        char error_buf[50];
+                        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55503)
+                                         "Unable to open the file %s: %s", signature_public_key_file, apr_strerror(rv, error_buf, 50));
+                        return;
 		}
 		apr_size_t key_len;
 		rv = apr_file_read_full(key_fd, key, MAX_KEY_LEN, &key_len); 
