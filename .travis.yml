@@ -19,7 +19,7 @@ addons:
 before_install:
   - git clone https://github.com/benmcollins/libjwt
   - cd libjwt
-  - git checkout tags/v1.7.2 -q 
+  - git checkout tags/v1.7.3 -q 
   - autoreconf -i
   - ./configure 
   - make 
