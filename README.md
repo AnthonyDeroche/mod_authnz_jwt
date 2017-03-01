@@ -39,6 +39,8 @@ cd ..
 sudo apt-get install apache2 apache2-dev
 git clone https://github.com/AnthonyDeroche/mod_authnz_jwt
 cd mod_authnz_jwt
+autoreconf -ivf
+./configure
 make
 sudo make install
 ~~~~
