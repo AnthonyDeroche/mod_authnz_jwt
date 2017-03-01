@@ -27,6 +27,8 @@ before_install:
   - sudo ldconfig
   - cd ..
 install:
+  - autoreconf -ivf
+  - ./configure
   - make
   - sudo make install
 before_script:
