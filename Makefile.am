@@ -20,7 +20,7 @@ AM_CXXFLAGS += -DDEBUG
 endif
 
 install-exec-local:
-	${APXS} -i -a -n 'authnz_jwt' mod_authnz_jwt.la
+	${APXS} -i -a -n 'auth_jwt' mod_authnz_jwt.la
 
 mod_authnz_jwt.la: libmodauthnzjwt.la
 	${APXS} -c -o $@ $< ${APACHE_CFLAGS} ${JWT_CFLAGS} ${JWT_LIBS} \
