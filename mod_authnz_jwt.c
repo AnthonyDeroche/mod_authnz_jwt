@@ -26,6 +26,7 @@
 
 #include "apr_strings.h"
 #include "apr_lib.h"
+#include "apr_base64.h"
 
 #include "ap_config.h"
 #include "httpd.h"
@@ -1019,7 +1020,13 @@ static void get_encode_key(request_rec *r, const char* signature_algorithm, unsi
 					 "You must specify AuthJWTSignatureSharedSecret directive in configuration with algorithm %s", signature_algorithm);
 			return;
 		}
-		strcpy((char*)key, (const char*)signature_shared_secret);
+		apr_pool_t *base64_decode_pool;
+		apr_pool_create(&base64_decode_pool, NULL);
+		char *decode_buf = apr_palloc(base64_decode_pool, 
+			apr_base64_decode_len((const char*)signature_shared_secret));
+
+		apr_base64_decode(decode_buf, signature_shared_secret); /* was bin */
+		strcpy((char*)key, (const char*)decode_buf);
 	}
 	else if(strcmp(signature_algorithm, "RS512")==0 || strcmp(signature_algorithm, "RS384")==0 || strcmp(signature_algorithm, "RS256")==0 ||
 			strcmp(signature_algorithm, "ES512")==0 || strcmp(signature_algorithm, "ES384")==0 || strcmp(signature_algorithm, "ES256")==0){
@@ -1070,7 +1077,12 @@ static void get_decode_key(request_rec *r, unsigned char* key){
     }
 
     if(signature_shared_secret){
-        strcpy((char*)key,(const char*)signature_shared_secret);
+        apr_pool_t *base64_decode_pool;
+        apr_pool_create(&base64_decode_pool, NULL);
+        char *decode_buf = apr_palloc(base64_decode_pool, 
+            apr_base64_decode_len((const char*)signature_shared_secret));
+        apr_base64_decode(decode_buf, signature_shared_secret); 
+        strcpy((char*)key, (const char*)decode_buf);
     }
     else if(signature_public_key_file){
 		apr_status_t rv;
