@@ -12,7 +12,7 @@ class TestAuthByToken(TestJWT):
 
     def test_login_should_with_json_should_fail(self):
         code, content, headers = self.http_post(self.LOGIN_PATH, {self.USERNAME_FIELD:self.USERNAME, self.PASSWORD_FIELD:self.PASSWORD}, headers={"Content-Type":"application/json"})
-        self.assertEqual(code, 401)
+        self.assertEqual(code, 415)
 
     @TestJWT.with_all_algorithms()
     def test_malformed_token_should_fail(self, alg, key, secured_url):

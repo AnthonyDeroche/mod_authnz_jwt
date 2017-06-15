@@ -2,7 +2,7 @@
 
 Authentication module for Apache httpd with JSON web tokens (JWT).
 
-[![Build Status](https://travis-ci.org/AnthonyDeroche/mod_authnz_jwt.svg?branch=development)](https://travis-ci.org/AnthonyDeroche/mod_authnz_jwt)
+[![Build Status](https://travis-ci.org/AnthonyDeroche/mod_authnz_jwt.svg?branch=master)](https://travis-ci.org/AnthonyDeroche/mod_authnz_jwt)
 
 More on JWT : https://jwt.io/
 
@@ -30,6 +30,7 @@ Although this module is able to deliver valid tokens, it may be used to check to
 sudo apt-get install libtool pkg-config autoconf libssl-dev check libjansson-dev
 git clone https://github.com/benmcollins/libjwt
 cd libjwt
+git checkout tags/v1.7.3
 autoreconf -i
 ./configure
 make
@@ -38,6 +39,8 @@ cd ..
 sudo apt-get install apache2 apache2-dev
 git clone https://github.com/AnthonyDeroche/mod_authnz_jwt
 cd mod_authnz_jwt
+autoreconf -ivf
+./configure
 make
 sudo make install
 ~~~~
@@ -128,7 +131,17 @@ AuthJWTIss example.com
 </Directory>
 ~~~~
 
+### How to get authenticated user in your apps?
+If your app is directly hosted by the same Apache than the module, then you can read the environment variable "REMOTE_USER".
 
+If the apache instance on which the module is installed acts as a reverse proxy, then you need to add a header in the request (X-Remote-User for example). We use mod_rewrite to do so. 
+For your information, rewrite rules are interpreted before authentication. That's why why need a "look ahead" variable which will take its final value during the fixup phase.
+~~~~
+RewriteEngine On
+RewriteCond %{LA-U:REMOTE_USER} (.+)
+RewriteRule . - [E=RU:%1]
+RequestHeader set X-Remote-User "%{RU}e" env=RU
+~~~~
 ## Configuration examples
 
 This configuration is given for tests purpose. Remember to always use TLS in production.

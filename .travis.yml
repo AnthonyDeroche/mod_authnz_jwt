@@ -19,7 +19,7 @@ addons:
 before_install:
   - git clone https://github.com/benmcollins/libjwt
   - cd libjwt
-  - git checkout tags/v1.7.2 -q 
+  - git checkout tags/v1.7.3 -q 
   - autoreconf -i
   - ./configure 
   - make 
@@ -27,10 +27,12 @@ before_install:
   - sudo ldconfig
   - cd ..
 install:
+  - autoreconf -ivf
+  - ./configure
   - make
   - sudo make install
 before_script:
-  - pip install pyjwt requests
+  - pip install pyjwt requests cryptography
   - chmod ugo+x tests/debian_tests.sh
   - cd tests
 script: ./debian_tests.sh

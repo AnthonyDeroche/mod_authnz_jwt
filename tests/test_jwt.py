@@ -8,8 +8,10 @@ from functools import wraps
 
 class TestJWT(unittest.TestCase):
 
-    HMAC_SECURED_URL = "http://hmac.testjwt.local/jwt_secured/"
-    LOGIN_PATH = "http://hmac.testjwt.local/jwt_login"
+    HMAC_SECURED_URL = "http://testjwt.local/hmac_secured"
+    RSA_SECURED_URL = "http://testjwt.local/rsa_secured"
+    EC_SECURED_URL = "http://testjwt.local/ec_secured"
+    LOGIN_PATH = "http://testjwt.local/jwt_login"
     USERNAME = "test"
     PASSWORD = "test"
     HMAC_SHARED_SECRET = "secret"
@@ -18,11 +20,10 @@ class TestJWT(unittest.TestCase):
     PASSWORD_FIELD = "password"
     JWT_EXPDELAY = 1800
     JWT_NBF_DELAY = 0
-    JWT_ISS = "hmac.testjwt.local"
+    JWT_ISS = "testjwt.local"
     JWT_AUD = "tests"
     JWT_LEEWAY = 10
-    ALGORITHMS = ["HS256", "HS384", "HS512"]
-    # ALGORITHMS = ["HS256", "HS384", "HS512", "RS256", "RS384", "RS512", "ES256", "ES384", "ES512"]
+    ALGORITHMS = ["HS256", "HS384", "HS512", "RS256", "RS384", "RS512", "ES256", "ES384", "ES512"]
 
     @classmethod
     def with_all_algorithms(cls, algorithms=None):
@@ -35,12 +36,16 @@ class TestJWT(unittest.TestCase):
                     if alg in ("HS256", "HS384", "HS512"):
                         key = cls.HMAC_SHARED_SECRET
                         secured_url = cls.HMAC_SECURED_URL
-                    #elif alg in ("RS256", "RS384", "RS512"):
-                    #    key = ""
-                    #    secured_url = ""
-                    #elif alg in ("ES256", "ES384", "ES512"):
-                    #    key = ""
-                    #    secured_url = ""
+                    elif alg in ("RS256", "RS384", "RS512"):
+                        f = open("/opt/mod_jwt_tests/rsa-priv.pem")
+                        key = f.read()
+                        f.close()
+                        secured_url = cls.RSA_SECURED_URL
+                    elif alg in ("ES256", "ES384", "ES512"):
+                        f = open("/opt/mod_jwt_tests/ec-priv.pem")
+                        key = f.read()
+                        f.close()
+                        secured_url = cls.EC_SECURED_URL
                     with _self.subTest(alg=alg, key=key):
                         func(_self, alg, key, secured_url)
             return handler
@@ -62,6 +67,8 @@ class TestJWT(unittest.TestCase):
     def http_post(self, url, data, token=None, headers=None):
         if headers is None:
             headers = {}
+        if "Content-Type" not in headers:
+            headers["Content-Type"] = "application/x-www-form-urlencoded"
         if "Authorization" not in headers and token is not None:
             headers["Authorization"] = "Bearer %s" % token
         r = requests.post(url, data=data, headers=headers)
