@@ -122,6 +122,7 @@ static void *create_auth_jwt_dir_config(apr_pool_t *p, char *d);
 static void *create_auth_jwt_config(apr_pool_t * p, server_rec *s);
 static void *merge_auth_jwt_dir_config(apr_pool_t *p, void* basev, void* addv);
 static void *merge_auth_jwt_config(apr_pool_t *p, void* basev, void* addv);
+
 static void register_hooks(apr_pool_t * p);
 
 static const char *add_authn_provider(cmd_parms * cmd, void *config, const char *arg);
@@ -164,6 +165,9 @@ static char** token_get_claim_array_of_string(request_rec* r, jwt_t *token, cons
 static json_t* token_get_claim_array(request_rec* r, jwt_t *token, const char* claim);
 static json_t* token_get_claim_json(request_rec* r, jwt_t *token, const char* claim);
 static const char* token_get_alg(jwt_t *jwt);
+static char *getJWTCookie(request_rec *r);
+
+
 
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  DECLARE DIRECTIVES ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
@@ -243,6 +247,34 @@ static void *create_auth_jwt_config(apr_pool_t * p, server_rec *s){
 
 	return (void *)conf;
 }
+
+
+
+static char* getJWTCookie(request_rec *r) {
+
+	char *cookieName = "jwt_token";
+	char *cookie, *tokenizerCtx, *jwt = NULL;
+	char *cookies = apr_pstrdup(r->pool, (char *) apr_table_get(r->headers_in, "Cookie"));
+
+	if(cookies != NULL) {
+		cookie = apr_strtok(cookies, ";", &tokenizerCtx);
+
+		while (cookie != NULL) {
+			while (*cookie == ' ') {
+				cookie++;
+			}
+			if (strncmp(cookie, cookieName, strlen(cookieName)) == 0) {
+				cookie += (strlen(cookieName)+1);
+				jwt = apr_pstrdup(r->pool, cookie);
+				break;
+			}
+			cookie = apr_strtok(NULL, ";", &tokenizerCtx);
+		}
+	}
+
+	return jwt;
+}
+
 
 static void* merge_auth_jwt_dir_config(apr_pool_t *p, void* basev, void* addv){
 	auth_jwt_config_rec *base = (auth_jwt_config_rec *)basev;
@@ -957,54 +989,62 @@ static int auth_jwt_authn_with_token(request_rec *r){
 		return HTTP_INTERNAL_SERVER_ERROR;
 	}
 
+    // Fallback to jwt_token cookie if no header
 	if(!authorization_header){
+		token_str = getJWTCookie(r);
+	} else {
+		int header_len = strlen(authorization_header);
+		if(header_len > 7 && !strncmp(authorization_header, "Bearer ", 7)){
+			token_str = authorization_header+7;
+		}else{
+			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55408)
+							"auth_jwt authn: type of Authorization header is not Bearer");
+			apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
+							"Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_request\", error_description=\"Authentication type must be Bearer\"",
+		 					NULL));
+			return HTTP_UNAUTHORIZED;
+		}
+
+	}
+
+
+	if(!token_str){
 		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55404)
 							"auth_jwt authn: missing Authorization header, responding with WWW-Authenticate header...");
 		apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool, "Bearer realm=\"", ap_auth_name(r),"\"", NULL));
 		return HTTP_UNAUTHORIZED;
 	}
 
-	int header_len = strlen(authorization_header);
-	if(header_len > 7 && !strncmp(authorization_header, "Bearer ", 7)){
-		token_str = authorization_header+7;
-		jwt_t* token;
-		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55405)
-							"auth_jwt authn: checking signature and fields correctness...");
-		rv = token_check(r, &token, token_str, key);
-        
-		if(OK == rv){
-			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55406)
-							"auth_jwt authn: signature is correct");
-            const char* found_alg = token_get_alg(token);
-            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55405)
-							"auth_jwt authn: algorithm found is %s", found_alg);
-			const char* attribute_username = (const char*)get_config_value(r, dir_attribute_username);
-			char* maybe_user = (char *)token_get_claim(token, attribute_username);
-			if(maybe_user == NULL){
-				ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55407)
-						"Username was not in token ('%s' attribute is expected)", attribute_username);
-				apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
-				"Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Username was not in token\"",
-				 NULL));
-				return HTTP_UNAUTHORIZED;
-			}
-			apr_table_setn(r->notes, "jwt", (const char*)token);		
-			r->user = maybe_user;
-			return OK;
-		}else{
-			return rv;
+	jwt_t* token;
+	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55405)
+						"auth_jwt authn: checking signature and fields correctness...");
+	rv = token_check(r, &token, token_str, key);
+    
+	if(OK == rv){
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55406)
+						"auth_jwt authn: signature is correct");
+        const char* found_alg = token_get_alg(token);
+        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55405)
+						"auth_jwt authn: algorithm found is %s", found_alg);
+		const char* attribute_username = (const char*)get_config_value(r, dir_attribute_username);
+		char* maybe_user = (char *)token_get_claim(token, attribute_username);
+		if(maybe_user == NULL){
+			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55407)
+					"Username was not in token ('%s' attribute is expected)", attribute_username);
+			apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
+			"Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Username was not in token\"",
+			 NULL));
+			return HTTP_UNAUTHORIZED;
 		}
-
-		if(token)
-			token_free(token);
+		apr_table_setn(r->notes, "jwt", (const char*)token);		
+		r->user = maybe_user;
+		return OK;
 	}else{
-		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55408)
-							"auth_jwt authn: type of Authorization header is not Bearer");
-		apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
-		"Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_request\", error_description=\"Authentication type must be Bearer\"",
-		 NULL));
-		return HTTP_UNAUTHORIZED;
+		return rv;
 	}
+
+	if(token)
+		token_free(token);
 }
 
 
@@ -1320,4 +1360,3 @@ static const char* token_get_alg(jwt_t *jwt){
 static void token_free(jwt_t *token){
 	jwt_free(token);
 }
-
