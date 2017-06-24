@@ -1,4 +1,4 @@
-#mod_authnz_jwt
+# mod_authnz_jwt
 
 Authentication module for Apache httpd with JSON web tokens (JWT).
 
@@ -226,14 +226,14 @@ With EC algorithm:
 
 ## Documentation
 
-####Directives
+#### Directives
 
-#####AuthJWTProvider 
+##### AuthJWTProvider 
 
 * **Description**: Authentication providers used
 * **Context**: directory
 
-#####AuthJWTSignatureAlgorithm 
+##### AuthJWTSignatureAlgorithm 
 
 * **Description**: The algorithm to use to sign tokens
 * **Context**: server config, directory
@@ -241,65 +241,65 @@ With EC algorithm:
 * **Possibles values**: HS256, HS384, HS512, RS256, RS384, RS512, ES256, ES384, ES512
 * **Mandatory**: yes
 
-#####AuthJWTSignatureSharedSecret 
+##### AuthJWTSignatureSharedSecret 
 
 * **Description**: The secret to use to sign tokens with HMACs.
 * **Context**: server config, directory
 * **Mandatory**: no
 
-#####AuthJWTSignaturePublicKeyFile
+##### AuthJWTSignaturePublicKeyFile
 
 * **Description**: The file path of public key used with either RSA or EC algorithms.
 * **Context**: server config, directory
 * **Mandatory**: no
 
-#####AuthJWTSignaturePrivateKeyFile 
+##### AuthJWTSignaturePrivateKeyFile 
 
 * **Description**: The file path of private key used with either RSA or EC algorithms.
 * **Context**: server config, directory
 * **Mandatory**: no
 
-#####AuthJWTIss
+##### AuthJWTIss
 * **Description**: The issuer of delivered tokens
 * **Context**: server config, directory
 * **Mandatory**: no
 
-#####AuthJWTAud
+##### AuthJWTAud
 * **Description**: The audience of delivered tokens
 * **Context**: server config, directory
 * **Mandatory**: no
 
-#####AuthJWTExpDelay 
+##### AuthJWTExpDelay 
 * **Description**: The time delay in seconds after which delivered tokens are considered invalid
 * **Context**: server config, directory
 * **Default**: 1800
 * **Mandatory**: no
 
-#####AuthJWTNbfDelay 
+##### AuthJWTNbfDelay 
 * **Description**: The time delay in seconds before which delivered tokens must not be processed
 * **Context**: server config, directory
 * **Default**: 0
 * **Mandatory**: no
 
-#####AuthJWTLeeway 
+##### AuthJWTLeeway 
 * **Description**: The leeway to account for clock skew in token validation process
 * **Context**: server config, directory
 * **Default**: 0
 * **Mandatory**: no
 
-#####AuthJWTFormUsername
+##### AuthJWTFormUsername
 * **Description**:The name of the field containing the username in authentication process
 * **Context**: server config, directory
 * **Default**: user
 * **Mandatory**: no
 
-#####AuthJWTFormPassword
+##### AuthJWTFormPassword
 * **Description**:The name of the field containing the password in authentication process
 * **Context**: server config, directory
 * **Default**: password
 * **Mandatory**: no
 
-#####AuthJWTAttributeUsername
+##### AuthJWTAttributeUsername
 * **Description**:The name of the attribute containing the username in the token (used for authorization as well as token generation)
 * **Context**: server config, directory
 * **Default**: user
