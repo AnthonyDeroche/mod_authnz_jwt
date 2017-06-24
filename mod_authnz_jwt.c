@@ -149,17 +149,17 @@ static int create_token(request_rec *r, char** token_str, const char* username);
 
 static int auth_jwt_authn_with_token(request_rec *r);
 
-static void get_encode_key(request_rec* r, const char* algorithm, unsigned char* key);
-static void get_decode_key(request_rec* r, unsigned char* key);
-static int token_check(request_rec *r, jwt_t **jwt, const char *token, const unsigned char *key);
-static int token_decode(jwt_t **jwt, const char* token, const unsigned char *key);
+static void get_encode_key(request_rec* r, const char* algorithm, unsigned char* key, unsigned int* keylen);
+static void get_decode_key(request_rec* r, unsigned char* key, unsigned int* keylen);
+static int token_check(request_rec *r, jwt_t **jwt, const char *token, const unsigned char *key, unsigned int keylen);
+static int token_decode(jwt_t **jwt, const char* token, const unsigned char *key, unsigned int keylen);
 static int token_new(jwt_t **jwt);
 static const char* token_get_claim(jwt_t *token, const char* claim);
 static long token_get_claim_int(jwt_t *token, const char* claim);
 static int token_add_claim(jwt_t *jwt, const char *claim, const char *val);
 static int token_add_claim_int(jwt_t *jwt, const char *claim, long val);
 static void token_free(jwt_t *token);
-static int token_set_alg(request_rec *r, jwt_t *jwt, const char* alg, const unsigned char *key);
+static int token_set_alg(request_rec *r, jwt_t *jwt, const char* alg, const unsigned char *key, unsigned int keylen);
 static char *token_encode_str(jwt_t *jwt);
 static char** token_get_claim_array_of_string(request_rec* r, jwt_t *token, const char* claim, int* len);
 static json_t* token_get_claim_array(request_rec* r, jwt_t *token, const char* claim);
@@ -772,9 +772,10 @@ static int create_token(request_rec *r, char** token_str, const char* username){
 	
 	char* signature_algorithm = (char *)get_config_value(r, dir_signature_algorithm);
 	unsigned char sign_key[MAX_KEY_LEN] = { 0 };
-	get_encode_key(r, signature_algorithm, sign_key);
+    unsigned int keylen;
+	get_encode_key(r, signature_algorithm, sign_key, &keylen);
 
-	if(strlen((const char*)sign_key) == 0){
+	if(keylen == 0){
 		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55302)
 							"auth_jwt create_token: key used for signature is empty");
 		return HTTP_INTERNAL_SERVER_ERROR;
@@ -786,9 +787,9 @@ static int create_token(request_rec *r, char** token_str, const char* username){
 	int nbf_delay = get_config_int_value(r, dir_nbf_delay);
 
 	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55305)
-							"auth_jwt create_token: using algorithm %s...", signature_algorithm);
+							"auth_jwt create_token: using algorithm %s (key length=%d)...", signature_algorithm, keylen);
 
-	if(token_set_alg(r, token, signature_algorithm, sign_key)!=0){
+	if(token_set_alg(r, token, signature_algorithm, sign_key, keylen)!=0){
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 	
@@ -949,10 +950,11 @@ static int auth_jwt_authn_with_token(request_rec *r){
 	char* token_str;
 	
 	unsigned char key[MAX_KEY_LEN] = { 0 };
+	unsigned int keylen;
 
-	get_decode_key(r, key);
+	get_decode_key(r, key, &keylen);
 
-	if(strlen((const char*)key)==0){
+	if(keylen == 0){
 		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55403)
 							"auth_jwt authn: key used to check signature is empty");
 		return HTTP_INTERNAL_SERVER_ERROR;
@@ -971,7 +973,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 		jwt_t* token;
 		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55405)
 							"auth_jwt authn: checking signature and fields correctness...");
-		rv = token_check(r, &token, token_str, key);
+		rv = token_check(r, &token, token_str, key, keylen);
         
 		if(OK == rv){
 			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55406)
@@ -1011,7 +1013,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  TOKEN OPERATIONS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
 
-static void get_encode_key(request_rec *r, const char* signature_algorithm, unsigned char* key){
+static void get_encode_key(request_rec *r, const char* signature_algorithm, unsigned char* key, unsigned int* keylen){
 
 	if(strcmp(signature_algorithm, "HS512")==0 || strcmp(signature_algorithm, "HS384")==0 || strcmp(signature_algorithm, "HS256")==0){
 		char* signature_shared_secret = (char*)get_config_value(r, dir_signature_shared_secret);
@@ -1022,11 +1024,11 @@ static void get_encode_key(request_rec *r, const char* signature_algorithm, unsi
 		}
 		apr_pool_t *base64_decode_pool;
 		apr_pool_create(&base64_decode_pool, NULL);
-		char *decode_buf = apr_palloc(base64_decode_pool, 
-			apr_base64_decode_len((const char*)signature_shared_secret));
-
+		int decoded_len = apr_base64_decode_len((const char*)signature_shared_secret);
+		char *decode_buf = apr_palloc(base64_decode_pool, decoded_len);
 		apr_base64_decode(decode_buf, signature_shared_secret); /* was bin */
-		strcpy((char*)key, (const char*)decode_buf);
+		memcpy((char*)key, (const char*)decode_buf, (size_t)decoded_len);
+        *keylen = decoded_len;
 	}
 	else if(strcmp(signature_algorithm, "RS512")==0 || strcmp(signature_algorithm, "RS384")==0 || strcmp(signature_algorithm, "RS256")==0 ||
 			strcmp(signature_algorithm, "ES512")==0 || strcmp(signature_algorithm, "ES384")==0 || strcmp(signature_algorithm, "ES256")==0){
@@ -1053,6 +1055,7 @@ static void get_encode_key(request_rec *r, const char* signature_algorithm, unsi
 			return;
 		}
 		apr_file_close(key_fd);
+        *keylen = (unsigned int)key_len;
 	} else {
 		//unknown algorithm
 		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55505)
@@ -1060,7 +1063,7 @@ static void get_encode_key(request_rec *r, const char* signature_algorithm, unsi
 	}
 }
 
-static void get_decode_key(request_rec *r, unsigned char* key){
+static void get_decode_key(request_rec *r, unsigned char* key, unsigned int* keylen){
     char* signature_public_key_file = (char*)get_config_value(r, dir_signature_public_key_file);
     char* signature_shared_secret = (char*)get_config_value(r, dir_signature_shared_secret);
 
@@ -1079,10 +1082,11 @@ static void get_decode_key(request_rec *r, unsigned char* key){
     if(signature_shared_secret){
         apr_pool_t *base64_decode_pool;
         apr_pool_create(&base64_decode_pool, NULL);
-        char *decode_buf = apr_palloc(base64_decode_pool, 
-            apr_base64_decode_len((const char*)signature_shared_secret));
+		int decode_len = apr_base64_decode_len((const char*)signature_shared_secret);
+        char *decode_buf = apr_palloc(base64_decode_pool, decode_len);
         apr_base64_decode(decode_buf, signature_shared_secret); 
-        strcpy((char*)key, (const char*)decode_buf);
+        memcpy((char*)key, (const char*)decode_buf, decode_len);
+		*keylen = (unsigned int)decode_len;
     }
     else if(signature_public_key_file){
 		apr_status_t rv;
@@ -1101,6 +1105,7 @@ static void get_decode_key(request_rec *r, unsigned char* key){
 					"Error while reading the file %s", signature_public_key_file);
 			return;
 		}
+		*keylen = (unsigned int)key_len;
 		apr_file_close(key_fd);
     }
 }
@@ -1110,9 +1115,9 @@ static int token_new(jwt_t **jwt){
 }
 
 
-static int token_check(request_rec *r, jwt_t **jwt, const char *token, const unsigned char *key){
+static int token_check(request_rec *r, jwt_t **jwt, const char *token, const unsigned char *key, unsigned int keylen){
 
-	int decode_res = token_decode(jwt, token, key);
+	int decode_res = token_decode(jwt, token, key, keylen);
 
 	if(decode_res != 0){
 		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55512)"Decoding process has failed, token is either malformed or signature is invalid");
@@ -1192,8 +1197,8 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
 	return OK;
 }
 
-static int token_decode(jwt_t **jwt, const char* token, const unsigned char *key){
-	return jwt_decode(jwt, token, key, strlen((const char*)key));
+static int token_decode(jwt_t **jwt, const char* token, const unsigned char *key, unsigned int keylen){
+	return jwt_decode(jwt, token, key, keylen);
 }
 
 static char *token_encode_str(jwt_t *jwt){
@@ -1275,7 +1280,7 @@ static json_t* token_get_claim_json(request_rec *r, jwt_t *token, const char* cl
 	return json;
 }
 
-static int token_set_alg(request_rec *r, jwt_t *jwt, const char* signature_algorithm, const unsigned char *key){
+static int token_set_alg(request_rec *r, jwt_t *jwt, const char* signature_algorithm, const unsigned char *key, unsigned int keylen){
 	jwt_alg_t algorithm;
 	if(!strcmp(signature_algorithm, "HS512")){
 		algorithm = JWT_ALG_HS512;
@@ -1300,7 +1305,7 @@ static int token_set_alg(request_rec *r, jwt_t *jwt, const char* signature_algor
 				  "Unknown algorithm %s", signature_algorithm);
 		return 1;
 	}
-	return jwt_set_alg(jwt, algorithm, key, strlen((const char*)key));
+	return jwt_set_alg(jwt, algorithm, key, keylen);
 }
 
 static const char* token_get_alg(jwt_t *jwt){

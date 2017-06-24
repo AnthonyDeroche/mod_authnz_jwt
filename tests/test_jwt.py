@@ -13,10 +13,14 @@ class TestJWT(unittest.TestCase):
     HMAC_SECURED_URL = "http://testjwt.local/hmac_secured"
     RSA_SECURED_URL = "http://testjwt.local/rsa_secured"
     EC_SECURED_URL = "http://testjwt.local/ec_secured"
-    LOGIN_PATH = "http://testjwt.local/jwt_login"
+
+    HMAC_LOGIN_URL = "http://testjwt.local/jwt_login_hs"
+    RSA_LOGIN_URL = "http://testjwt.local/jwt_login_rs"
+    EC_LOGIN_URL = "http://testjwt.local/jwt_login_es"
+
     USERNAME = "test"
     PASSWORD = "test"
-    HMAC_SHARED_SECRET_BASE64 = "c2VjcmV0"
+    HMAC_SHARED_SECRET_BASE64 = "bnVsbGNoYXIAc2VjcmV0"
     USERNAME_ATTRIBUTE = "user"
     USERNAME_FIELD = "user"
     PASSWORD_FIELD = "password"
@@ -36,20 +40,30 @@ class TestJWT(unittest.TestCase):
             def handler(_self):
                 for alg in algorithms:
                     if alg in ("HS256", "HS384", "HS512"):
-                        key = base64.b64decode(cls.HMAC_SHARED_SECRET_BASE64).decode('utf-8')
+                        private_key = base64.b64decode(cls.HMAC_SHARED_SECRET_BASE64)
+                        public_key = private_key
                         secured_url = cls.HMAC_SECURED_URL
+                        login_url = cls.HMAC_LOGIN_URL
                     elif alg in ("RS256", "RS384", "RS512"):
-                        f = open("/opt/mod_jwt_tests/rsa-priv.pem")
-                        key = f.read()
-                        f.close()
+                        f_priv = open("/opt/mod_jwt_tests/rsa-priv.pem")
+                        private_key = f_priv.read()
+                        f_priv.close()
+                        f_pub = open("/opt/mod_jwt_tests/rsa-pub.pem")
+                        public_key = f_pub.read()
+                        f_pub.close()
                         secured_url = cls.RSA_SECURED_URL
+                        login_url = cls.RSA_LOGIN_URL
                     elif alg in ("ES256", "ES384", "ES512"):
-                        f = open("/opt/mod_jwt_tests/ec-priv.pem")
-                        key = f.read()
-                        f.close()
+                        f_priv = open("/opt/mod_jwt_tests/ec-priv.pem")
+                        private_key = f_priv.read()
+                        f_priv.close()
+                        f_pub = open("/opt/mod_jwt_tests/ec-pub.pem")
+                        public_key = f_pub.read()
+                        f_pub.close()
                         secured_url = cls.EC_SECURED_URL
-                    with _self.subTest(alg=alg, key=key):
-                        func(_self, alg, key, secured_url)
+                        login_url = cls.EC_LOGIN_URL
+                    with _self.subTest(alg=alg, public_key=public_key, private_key=private_key):
+                        func(_self, alg, public_key, private_key, secured_url, login_url)
             return handler
         return decorator
 
@@ -76,8 +90,8 @@ class TestJWT(unittest.TestCase):
         r = requests.post(url, data=data, headers=headers)
         return r.status_code, r.content.decode('utf-8'), r.headers
 
-    def decode_jwt_hs(self, token, shared_secret):
-        return jwt.decode(token, base64.b64decode(shared_secret).decode('utf-8'), audience="tests")
+    def decode_jwt(self, token, key, algorithm):
+        return jwt.decode(token, key, audience="tests", algorithms=[algorithm])
 
     def encode_jwt(self, payload, key, algorithm):
         return jwt.encode(payload, key, algorithm=algorithm).decode('utf-8')
