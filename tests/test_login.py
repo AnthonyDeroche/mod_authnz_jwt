@@ -6,6 +6,10 @@ from test_jwt import TestJWT
 
 class TestLogin(TestJWT):
 
+
+    HMAC_SHARED_SECRET_LOGIN = "c2VjcmV0dG9sb2dpbg=="
+
+
     def test_login_should_success(self):
         code, content, headers = self.http_post(self.LOGIN_PATH, {self.USERNAME_FIELD:self.USERNAME, self.PASSWORD_FIELD:self.PASSWORD})
         
@@ -16,7 +20,7 @@ class TestLogin(TestJWT):
         # we check if the JSON object is correct and token is valid
         received_object = json.loads(content)
         self.assertTrue("token" in received_object)
-        jwt_fields = self.decode_jwt(received_object["token"])
+        jwt_fields = self.decode_jwt_hs(received_object["token"], self.HMAC_SHARED_SECRET_LOGIN)
         self.assertTrue(all(claim in jwt_fields for claim in [self.USERNAME_ATTRIBUTE, "exp", "nbf", "iat", "iss", "aud"]))
         self.assertEqual(jwt_fields[self.USERNAME_ATTRIBUTE], self.USERNAME)
         # we assume this test takes less than 1s

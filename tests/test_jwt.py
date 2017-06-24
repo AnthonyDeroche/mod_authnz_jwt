@@ -5,6 +5,8 @@ import json
 import sys
 from contextlib import contextmanager
 from functools import wraps
+import base64
+
 
 class TestJWT(unittest.TestCase):
 
@@ -14,7 +16,7 @@ class TestJWT(unittest.TestCase):
     LOGIN_PATH = "http://testjwt.local/jwt_login"
     USERNAME = "test"
     PASSWORD = "test"
-    HMAC_SHARED_SECRET = "secret"
+    HMAC_SHARED_SECRET_BASE64 = "c2VjcmV0"
     USERNAME_ATTRIBUTE = "user"
     USERNAME_FIELD = "user"
     PASSWORD_FIELD = "password"
@@ -34,7 +36,7 @@ class TestJWT(unittest.TestCase):
             def handler(_self):
                 for alg in algorithms:
                     if alg in ("HS256", "HS384", "HS512"):
-                        key = cls.HMAC_SHARED_SECRET
+                        key = base64.b64decode(cls.HMAC_SHARED_SECRET_BASE64).decode('utf-8')
                         secured_url = cls.HMAC_SECURED_URL
                     elif alg in ("RS256", "RS384", "RS512"):
                         f = open("/opt/mod_jwt_tests/rsa-priv.pem")
@@ -74,8 +76,8 @@ class TestJWT(unittest.TestCase):
         r = requests.post(url, data=data, headers=headers)
         return r.status_code, r.content.decode('utf-8'), r.headers
 
-    def decode_jwt(self, token):
-        return jwt.decode(token, self.HMAC_SHARED_SECRET, audience="tests")
+    def decode_jwt_hs(self, token, shared_secret):
+        return jwt.decode(token, base64.b64decode(shared_secret).decode('utf-8'), audience="tests")
 
     def encode_jwt(self, payload, key, algorithm):
         return jwt.encode(payload, key, algorithm=algorithm).decode('utf-8')
