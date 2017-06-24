@@ -80,7 +80,7 @@ The delivered token will contain your username in a field named "user" (See Auth
 A minimal configuration might be:
 ~~~~
 AuthJWTSignatureAlgorithm HS256
-AuthJWTSignatureSharedSecret CHANGEME
+AuthJWTSignatureSharedSecret Q0hBTkdFTUU=
 AuthJWTIss example.com
 <Location /demo/login>
 	SetHandler jwt-login-handler
@@ -100,7 +100,7 @@ Token must not be expired (exp), not processed too early (nbf), and issuer/audie
 A minimal configuration might be:
 ~~~~
 AuthJWTSignatureAlgorithm HS256
-AuthJWTSignatureSharedSecret CHANGEME
+AuthJWTSignatureSharedSecret Q0hBTkdFTUU=
 AuthJWTIss example.com
 <Directory /var/www/html/demo/secured/>
 	AllowOverride None
@@ -120,7 +120,7 @@ In case your key is an array, you can use the directive Require jwt-claim-array 
 Examples:
 ~~~~
 AuthJWTSignatureAlgorithm HS256
-AuthJWTSignatureSharedSecret CHANGEME
+AuthJWTSignatureSharedSecret Q0hBTkdFTUU=
 AuthJWTIss example.com
 <Directory /var/www/html/demo/secured/>
 	AllowOverride None
@@ -158,7 +158,7 @@ With HMAC algorithm:
 	AuthJWTAttributeUsername user
 	
 	AuthJWTSignatureAlgorithm HS256
-	AuthJWTSignatureSharedSecret CHANGEME
+	AuthJWTSignatureSharedSecret Q0hBTkdFTUU=
 	AuthJWTExpDelay 1800
 	AuthJWTNbfDelay 0
 	AuthJWTIss example.com
@@ -243,7 +243,7 @@ With EC algorithm:
 
 ##### AuthJWTSignatureSharedSecret 
 
-* **Description**: The secret to use to sign tokens with HMACs.
+* **Description**: The secret to use to sign tokens with HMACs. It must be base64 encoded.
 * **Context**: server config, directory
 * **Mandatory**: no
 
