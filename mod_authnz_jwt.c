@@ -1138,17 +1138,6 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
 		return HTTP_UNAUTHORIZED;
 	}
 
-	/*
-	Do not accept other signature algorithms than configured
-	*/
-	const char* sig_config = (char *)get_config_value(r, dir_signature_algorithm);
-	if(*jwt && parse_alg(sig_config) != jwt_get_alg(*jwt)){
-		apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
-		"Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Unsupported Signature Algorithm\"",
-		NULL));
-		return HTTP_UNAUTHORIZED;
-	}
-
 	const char* iss_config = (char *)get_config_value(r, dir_iss);
 	const char* aud_config = (char *)get_config_value(r, dir_aud);
 	int leeway = get_config_int_value(r, dir_leeway);
@@ -1205,6 +1194,18 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
 			return HTTP_UNAUTHORIZED;
 		}
 	}
+
+	/*
+	Do not accept other signature algorithms than configured
+	*/
+	const char* sig_config = (char *)get_config_value(r, dir_signature_algorithm);
+	if(*jwt && parse_alg(sig_config) != jwt_get_alg(*jwt)){
+		apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
+		"Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Unsupported Signature Algorithm\"",
+		NULL));
+		return HTTP_UNAUTHORIZED;
+	}
+
 	return OK;
 }
 
