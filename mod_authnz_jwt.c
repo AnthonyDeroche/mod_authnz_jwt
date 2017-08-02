@@ -165,7 +165,7 @@ static char** token_get_claim_array_of_string(request_rec* r, jwt_t *token, cons
 static json_t* token_get_claim_array(request_rec* r, jwt_t *token, const char* claim);
 static json_t* token_get_claim_json(request_rec* r, jwt_t *token, const char* claim);
 static const char* token_get_alg(jwt_t *jwt);
-
+static jwt_alg_t parse_alg(const char* signature_algorithm);
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  DECLARE DIRECTIVES ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
 
@@ -1194,6 +1194,18 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
 			return HTTP_UNAUTHORIZED;
 		}
 	}
+
+	/*
+	Do not accept other signature algorithms than configured
+	*/
+	const char* sig_config = (char *)get_config_value(r, dir_signature_algorithm);
+	if(*jwt && parse_alg(sig_config) != jwt_get_alg(*jwt)){
+		apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
+		"Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Unsupported Signature Algorithm\"",
+		NULL));
+		return HTTP_UNAUTHORIZED;
+	}
+
 	return OK;
 }
 
@@ -1332,6 +1344,32 @@ static const char* token_get_alg(jwt_t *jwt){
         default:
             return NULL;
     }
+}
+
+static jwt_alg_t parse_alg(const char* signature_algorithm) {
+	jwt_alg_t algorithm;
+	if(!strcmp(signature_algorithm, "HS512")){
+		algorithm = JWT_ALG_HS512;
+	}else if(!strcmp(signature_algorithm, "HS384")){
+		algorithm = JWT_ALG_HS384;
+	}else if(!strcmp(signature_algorithm, "HS256")){
+		algorithm = JWT_ALG_HS256;
+	}else if(!strcmp(signature_algorithm, "RS512")){
+		algorithm = JWT_ALG_RS512;
+	}else if(!strcmp(signature_algorithm, "RS384")){
+		algorithm = JWT_ALG_RS384;
+	}else if(!strcmp(signature_algorithm, "RS256")){
+		algorithm = JWT_ALG_RS256;
+	}else if(!strcmp(signature_algorithm, "ES512")){
+		algorithm = JWT_ALG_ES512;
+	}else if(!strcmp(signature_algorithm, "ES384")){
+		algorithm = JWT_ALG_ES384;
+	}else if(!strcmp(signature_algorithm, "ES256")){
+		algorithm = JWT_ALG_ES256;
+	}else{
+		algorithm = JWT_ALG_NONE;
+	}
+	return algorithm;
 }
 
 static void token_free(jwt_t *token){
