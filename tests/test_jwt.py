@@ -37,7 +37,7 @@ class TestJWT(unittest.TestCase):
             @wraps(func)
             def handler(_self):
                 for alg in algorithms:
-                    secured_url = cls.HMAC_SECURED_URL + alg
+                    secured_url = cls.JWT_SECURED_URL + alg
                     if alg in ("HS256", "HS384", "HS512"):
                         private_key = base64.b64decode(cls.HMAC_SHARED_SECRET_BASE64)
                         public_key = private_key
