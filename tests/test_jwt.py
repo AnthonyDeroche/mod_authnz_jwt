@@ -10,9 +10,7 @@ import base64
 
 class TestJWT(unittest.TestCase):
 
-    HMAC_SECURED_URL = "http://testjwt.local/hmac_secured"
-    RSA_SECURED_URL = "http://testjwt.local/rsa_secured"
-    EC_SECURED_URL = "http://testjwt.local/ec_secured"
+    JWT_SECURED_URL = "http://testjwt.local/secured_"
 
     HMAC_LOGIN_URL = "http://testjwt.local/jwt_login_hs"
     RSA_LOGIN_URL = "http://testjwt.local/jwt_login_rs"
@@ -39,10 +37,10 @@ class TestJWT(unittest.TestCase):
             @wraps(func)
             def handler(_self):
                 for alg in algorithms:
+                    secured_url = cls.HMAC_SECURED_URL + alg
                     if alg in ("HS256", "HS384", "HS512"):
                         private_key = base64.b64decode(cls.HMAC_SHARED_SECRET_BASE64)
                         public_key = private_key
-                        secured_url = cls.HMAC_SECURED_URL
                         login_url = cls.HMAC_LOGIN_URL
                     elif alg in ("RS256", "RS384", "RS512"):
                         f_priv = open("/opt/mod_jwt_tests/rsa-priv.pem")
@@ -51,7 +49,6 @@ class TestJWT(unittest.TestCase):
                         f_pub = open("/opt/mod_jwt_tests/rsa-pub.pem")
                         public_key = f_pub.read()
                         f_pub.close()
-                        secured_url = cls.RSA_SECURED_URL
                         login_url = cls.RSA_LOGIN_URL
                     elif alg in ("ES256", "ES384", "ES512"):
                         f_priv = open("/opt/mod_jwt_tests/ec-priv.pem")
@@ -60,7 +57,6 @@ class TestJWT(unittest.TestCase):
                         f_pub = open("/opt/mod_jwt_tests/ec-pub.pem")
                         public_key = f_pub.read()
                         f_pub.close()
-                        secured_url = cls.EC_SECURED_URL
                         login_url = cls.EC_LOGIN_URL
                     with _self.subTest(alg=alg, public_key=public_key, private_key=private_key):
                         func(_self, alg, public_key, private_key, secured_url, login_url)
