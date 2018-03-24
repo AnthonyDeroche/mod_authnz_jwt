@@ -1025,10 +1025,10 @@ static void get_encode_key(request_rec *r, const char* signature_algorithm, unsi
 		}
 		apr_pool_t *base64_decode_pool;
 		apr_pool_create(&base64_decode_pool, NULL);
-		int decoded_len = apr_base64_decode_len((const char*)signature_shared_secret);
-		char *decode_buf = apr_palloc(base64_decode_pool, decoded_len);
-		apr_base64_decode(decode_buf, signature_shared_secret); /* was bin */
-		memcpy((char*)key, (const char*)decode_buf, (size_t)decoded_len);
+		size_t decoded_len, buf_len = apr_base64_decode_len(signature_shared_secret);
+		char *decode_buf = apr_pcalloc(base64_decode_pool, buf_len);
+		decoded_len = apr_base64_decode(decode_buf, signature_shared_secret); /* was bin */
+		memcpy(key, decode_buf, buf_len);
         *keylen = decoded_len;
 	}
 	else if(strcmp(signature_algorithm, "RS512")==0 || strcmp(signature_algorithm, "RS384")==0 || strcmp(signature_algorithm, "RS256")==0 ||
