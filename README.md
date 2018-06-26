@@ -304,8 +304,3 @@ With EC algorithm:
 * **Context**: server config, directory
 * **Default**: user
 * **Mandatory**: no
-
-## Demo
-<a href="https://anthony.deroche.me/demo/jwt.php" target="_blank">https://anthony.deroche.me/demo/jwt.php</a>
-
-
