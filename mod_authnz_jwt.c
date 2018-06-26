@@ -1083,11 +1083,11 @@ static void get_decode_key(request_rec *r, unsigned char* key, unsigned int* key
     if(signature_shared_secret){
         apr_pool_t *base64_decode_pool;
         apr_pool_create(&base64_decode_pool, NULL);
-		int decode_len = apr_base64_decode_len((const char*)signature_shared_secret);
-        char *decode_buf = apr_palloc(base64_decode_pool, decode_len);
-        apr_base64_decode(decode_buf, signature_shared_secret); 
-        memcpy((char*)key, (const char*)decode_buf, decode_len);
-		*keylen = (unsigned int)decode_len;
+        size_t decoded_len, buf_len = apr_base64_decode_len((const char*)signature_shared_secret);
+        char *decode_buf = apr_pcalloc(base64_decode_pool, buf_len);
+        decoded_len = apr_base64_decode(decode_buf, signature_shared_secret);
+        memcpy((char*)key, (const char*)decode_buf, decoded_len);
+        *keylen = (unsigned int)decoded_len;
     }
     else if(signature_public_key_file){
 		apr_status_t rv;
