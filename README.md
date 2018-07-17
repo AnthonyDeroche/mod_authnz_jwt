@@ -36,7 +36,7 @@ autoreconf -i
 make
 sudo make install
 cd ..
-sudo apt-get install apache2 apache2-dev
+sudo apt-get install apache2 apache2-dev libz-dev
 git clone https://github.com/AnthonyDeroche/mod_authnz_jwt
 cd mod_authnz_jwt
 autoreconf -ivf
