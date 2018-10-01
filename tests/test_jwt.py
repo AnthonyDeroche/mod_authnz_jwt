@@ -10,11 +10,7 @@ import base64
 
 class TestJWT(unittest.TestCase):
 
-    JWT_SECURED_URL = "http://testjwt.local/secured_"
-
-    HMAC_LOGIN_URL = "http://testjwt.local/jwt_login_hs"
-    RSA_LOGIN_URL = "http://testjwt.local/jwt_login_rs"
-    EC_LOGIN_URL = "http://testjwt.local/jwt_login_es"
+    BASE_URL = "http://testjwt.local/"
 
     USERNAME = "test"
     PASSWORD = "test"
@@ -30,18 +26,19 @@ class TestJWT(unittest.TestCase):
     ALGORITHMS = ["HS256", "HS384", "HS512", "RS256", "RS384", "RS512", "ES256", "ES384", "ES512"]
 
     @classmethod
-    def with_all_algorithms(cls, algorithms=None):
+    def with_all_algorithms(cls, algorithms=None, delivery="json"):
         if algorithms is None:
             algorithms = cls.ALGORITHMS
         def decorator(func):
             @wraps(func)
             def handler(_self):
                 for alg in algorithms:
-                    secured_url = cls.JWT_SECURED_URL + alg
+                    baseUrl = cls.BASE_URL + alg + '/' + delivery;
+                    secured_url = baseUrl + '/secured'
+                    login_url = baseUrl + '/login'
                     if alg in ("HS256", "HS384", "HS512"):
                         private_key = base64.b64decode(cls.HMAC_SHARED_SECRET_BASE64)
                         public_key = private_key
-                        login_url = cls.HMAC_LOGIN_URL
                     elif alg in ("RS256", "RS384", "RS512"):
                         f_priv = open("/opt/mod_jwt_tests/rsa-priv.pem")
                         private_key = f_priv.read()
@@ -49,7 +46,6 @@ class TestJWT(unittest.TestCase):
                         f_pub = open("/opt/mod_jwt_tests/rsa-pub.pem")
                         public_key = f_pub.read()
                         f_pub.close()
-                        login_url = cls.RSA_LOGIN_URL
                     elif alg in ("ES256", "ES384", "ES512"):
                         f_priv = open("/opt/mod_jwt_tests/ec-priv.pem")
                         private_key = f_priv.read()
@@ -57,7 +53,6 @@ class TestJWT(unittest.TestCase):
                         f_pub = open("/opt/mod_jwt_tests/ec-pub.pem")
                         public_key = f_pub.read()
                         f_pub.close()
-                        login_url = cls.EC_LOGIN_URL
                     with _self.subTest(alg=alg, public_key=public_key, private_key=private_key):
                         func(_self, alg, public_key, private_key, secured_url, login_url)
             return handler
@@ -84,7 +79,7 @@ class TestJWT(unittest.TestCase):
         if "Authorization" not in headers and token is not None:
             headers["Authorization"] = "Bearer %s" % token
         r = requests.post(url, data=data, headers=headers)
-        return r.status_code, r.content.decode('utf-8'), r.headers
+        return r.status_code, r.content.decode('utf-8'), r.headers, r.cookies
 
     def decode_jwt(self, token, key, algorithm):
         return jwt.decode(token, key, audience="tests", algorithms=[algorithm])
