@@ -8,18 +8,20 @@ class TestAuthByToken(TestJWT):
 
     @TestJWT.with_all_algorithms()
     def test_login_with_urlencoded_should_success(self, alg, public_key, private_key, secured_url, login_url):
-        code, content, headers = self.http_post(login_url, {
+        code, content, headers, cookies = self.http_post(login_url, {
             self.USERNAME_FIELD: self.USERNAME,
             self.PASSWORD_FIELD: self.PASSWORD
         },
-                                                headers={"Content-Type": "application/x-www-form-urlencoded"})
+                                                         headers={"Content-Type": "application/x-www-form-urlencoded"})
         self.assertEqual(code, 200)
 
     @TestJWT.with_all_algorithms()
-    def test_login_should_with_json_should_fail(self, alg, public_key, private_key, secured_url, login_url):
-        code, content, headers = self.http_post(login_url, {self.USERNAME_FIELD: self.USERNAME,
-                                                            self.PASSWORD_FIELD: self.PASSWORD},
-                                                headers={"Content-Type": "application/json"})
+    def test_login_with_json_should_fail(self, alg, public_key, private_key, secured_url, login_url):
+        code, content, headers, cookies = self.http_post(login_url, {
+            self.USERNAME_FIELD: self.USERNAME,
+            self.PASSWORD_FIELD: self.PASSWORD
+        },
+                                                         headers={"Content-Type": "application/json"})
         self.assertEqual(code, 415)
 
     @TestJWT.with_all_algorithms()
