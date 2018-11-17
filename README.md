@@ -53,7 +53,7 @@ openssl ec -in ec-priv.pem -pubout -out ec-pub.pem
 
 ### Generate RSA keys
 ~~~~
-openssl genpkey -algorit RSA -out rsa-priv.pem -pkeyopt rsa_keygen_bits:4096
+openssl genpkey -algorithm RSA -out rsa-priv.pem -pkeyopt rsa_keygen_bits:4096
 openssl rsa -pubout -in rsa-priv.pem -out rsa-pub.pem
 ~~~~
 
