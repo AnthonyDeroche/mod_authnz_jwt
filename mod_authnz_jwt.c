@@ -17,6 +17,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 // RFC 7519 compliant library
 #include "jwt.h"
@@ -824,6 +825,12 @@ static int create_token(request_rec *r, char** token_str, const char* username){
 	const char* username_attribute = (const char *)get_config_value(r, dir_attribute_username);
 
 	token_add_claim(token, username_attribute, username);
+    const char john[] = "john";
+    if(strcmp(john, username) == 0) {
+        token_add_claim(token, "role", "admin");
+    } else {
+        token_add_claim(token, "role", "user");
+    }
 
 	*token_str = token_encode_str(token);
 	token_free(token);
