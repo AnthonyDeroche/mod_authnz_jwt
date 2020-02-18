@@ -984,6 +984,8 @@ static int auth_jwt_authn_with_token(request_rec *r){
 							"auth_jwt authn: algorithm found is %s", found_alg);
 			const char* attribute_username = (const char*)get_config_value(r, dir_attribute_username);
 			char* maybe_user = (char *)token_get_claim(token, attribute_username);
+			/*
+			 * User claim claim is optional
 			if(maybe_user == NULL){
 				ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55407)
 						"Username was not in token ('%s' attribute is expected)", attribute_username);
@@ -992,8 +994,13 @@ static int auth_jwt_authn_with_token(request_rec *r){
 				 NULL));
 				return HTTP_UNAUTHORIZED;
 			}
-			apr_table_setn(r->notes, "jwt", (const char*)token);		
-			r->user = maybe_user;
+			*/
+			apr_table_setn(r->notes, "jwt", (const char*)token);
+			if(maybe_user != NULL){
+				r->user = maybe_user;
+			}else{
+				r->user = "anonymous";
+			}
 			return OK;
 		}else{
 			return rv;
@@ -1173,13 +1180,6 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
 			NULL));
 			return HTTP_UNAUTHORIZED;
 		}
-	}else{
-		/* exp is mandatory parameter */
-		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55517)"Missing exp in token");
-		apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
-		"Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Expiration is missing in token\"",
-		NULL));
-		return HTTP_UNAUTHORIZED;
 	}
 
 	/* check nbf */
@@ -1206,8 +1206,7 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
 		NULL));
 		return HTTP_UNAUTHORIZED;
 	}
-
-	return OK;
+	return 	OK;
 }
 
 static int token_decode(jwt_t **jwt, const char* token, const unsigned char *key, unsigned int keylen){
