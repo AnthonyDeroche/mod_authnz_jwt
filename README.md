@@ -30,7 +30,7 @@ Although this module is able to deliver valid tokens, it may be used to check to
 sudo apt-get install libtool pkg-config autoconf libssl-dev check libjansson-dev
 git clone https://github.com/benmcollins/libjwt
 cd libjwt
-git checkout tags/v1.8.0
+git checkout tags/v1.12.0
 autoreconf -i
 ./configure
 make

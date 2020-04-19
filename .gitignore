@@ -4,6 +4,7 @@
 *.la
 .libs/*
 tests/__pycache__/*
+.idea
 
 .deps
 Makefile
