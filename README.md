@@ -223,10 +223,54 @@ With EC algorithm:
 </VirtualHost>
 ~~~~
 
+With Cookie:
+~~~~
+<VirtualHost *:80>
+	ServerName example.com
+	DocumentRoot /var/www/html/
+
+	# default values
+	AuthJWTFormUsername user
+	AuthJWTFormPassword password
+	AuthJWTAttributeUsername user
+
+	AuthJWTSignatureAlgorithm HS256
+	AuthJWTSignatureSharedSecret Q0hBTkdFTUU=
+	AuthJWTExpDelay 1800
+	AuthJWTNbfDelay 0
+	AuthJWTIss example.com
+	AuthJWTAud demo
+	AuthJWTLeeway 10
+
+    AuthJWTDeliveryType Cookie
+
+	<Directory /var/www/html/demo/secured/>
+		AllowOverride None
+		AuthType jwt-cookie
+		AuthName "private area"
+		Require valid-user
+	</Directory>
+
+
+	<Location /demo/login>
+		SetHandler jwt-login-handler
+		AuthJWTProvider file
+		AuthUserFile /var/www/jwt.htpasswd
+	</Location>
+
+	ErrorLog ${APACHE_LOG_DIR}/error.log
+	CustomLog ${APACHE_LOG_DIR}/access.log combined
+</VirtualHost>
+~~~~
 
 ## Documentation
 
 #### Directives
+
+##### AuthType
+* **Description**: Authentication type to allow. `jwt` and `jwt-bearer` will allow only the Authorization header. `jwt-cookie` allows only Cookie usage. `jwt-both` accepts Authorization header and cookie. Cookie value will be ignored if Authorization header is set.
+* **Context**: directory
+* **Possibles values**: jwt, jwt-bearer, jwt-cookie, jwt-both
 
 ##### AuthJWTProvider 
 
@@ -288,19 +332,38 @@ With EC algorithm:
 * **Mandatory**: no
 
 ##### AuthJWTFormUsername
-* **Description**:The name of the field containing the username in authentication process
+* **Description**: The name of the field containing the username in authentication process
 * **Context**: server config, directory
 * **Default**: user
 * **Mandatory**: no
 
 ##### AuthJWTFormPassword
-* **Description**:The name of the field containing the password in authentication process
+* **Description**: The name of the field containing the password in authentication process
 * **Context**: server config, directory
 * **Default**: password
 * **Mandatory**: no
 
 ##### AuthJWTAttributeUsername
-* **Description**:The name of the attribute containing the username in the token (used for authorization as well as token generation)
+* **Description**: The name of the attribute containing the username in the token (used for authorization as well as token generation)
 * **Context**: server config, directory
 * **Default**: user
+* **Mandatory**: no
+
+##### AuthJWTdeliveryType
+* **Description**: Type of token delivery JSON or Cookie (case-sensitive)
+* **Context**: server config, directory
+* **Default**: JSON
+* **Possibles values**: JSON, Cookie
+* **Mandatory**: no
+
+##### AuthJWTCookieName
+* **Description**: Cookie name to use when using cookie delivery
+* **Context**: server config, directory
+* **Default**: AuthToken
+* **Mandatory**: no
+
+##### AuthJWTCookieAttr
+* **Description**: Semi-colon separated attributes for cookie when using cookie delivery
+* **Context**: server config, directory
+* **Default**: Secure;HttpOnly;SameSite
 * **Mandatory**: no
