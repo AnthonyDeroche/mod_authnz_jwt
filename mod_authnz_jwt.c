@@ -1048,9 +1048,9 @@ static int auth_jwt_authn_with_token(request_rec *r){
 							"auth_jwt: authSubType %s", authSubType);
 
 	// 0 wrong value, 2 bearer, 4 cookie, 6 both
-	const int delivery_type = (strlen(authSubType) == 0 || strcmp(authSubType, "-both") == 0) ? 6 :
-		strcmp(authSubType, "-bearer") == 0 ? 2 :
+	const int delivery_type = (strlen(authSubType) == 0 || strcmp(authSubType, "-bearer") == 0) ? 2 :
 		strcmp(authSubType, "-cookie") == 0 ? 4 :
+		strcmp(authSubType, "-both") == 0 ? 6 :
 		0;
 
 	ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, APLOGNO(55400)
