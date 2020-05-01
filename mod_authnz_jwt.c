@@ -1040,7 +1040,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 
 	r->ap_auth_type = (char *) current_auth;
 
-	const char* token_str;
+	const char* token_str = 0;
 
 	const char* authSubType = current_auth + 3;
 
