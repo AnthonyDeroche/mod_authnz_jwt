@@ -349,7 +349,7 @@ With Cookie:
 * **Default**: user
 * **Mandatory**: no
 
-##### AuthJWTdeliveryType
+##### AuthJWTDeliveryType
 * **Description**: Type of token delivery JSON or Cookie (case-sensitive)
 * **Context**: server config, directory
 * **Default**: JSON
