@@ -219,7 +219,7 @@ static const command_rec auth_jwt_cmds[] =
 					"The name of the field containing the password in authentication process"),
 	AP_INIT_TAKE1("AuthJWTAttributeUsername", set_jwt_param, (void *)dir_attribute_username, RSRC_CONF|OR_AUTHCFG,
 					"The name of the attribute containing the username in the token"),
-	AP_INIT_TAKE1("AuthJWTdeliveryType", set_jwt_param, (void *)dir_delivery_type, RSRC_CONF|OR_AUTHCFG,
+	AP_INIT_TAKE1("AuthJWTDeliveryType", set_jwt_param, (void *)dir_delivery_type, RSRC_CONF|OR_AUTHCFG,
 					"Type of token delivery Json (default) or Cookie"),
 	AP_INIT_TAKE1("AuthJWTCookieName", set_jwt_param, (void *)dir_cookie_name, RSRC_CONF|OR_AUTHCFG,
 					"Cookie name to use when using cookie delivery"),
