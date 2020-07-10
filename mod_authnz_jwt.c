@@ -662,7 +662,7 @@ static const char *jwt_parse_config(cmd_parms *cmd, const char *require_line, co
 }
 
 static authz_status jwtclaim_check_authorization(request_rec *r, const char* require_args, const void *parsed_require_args){
-	ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, APLOGNO(55100)
+	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55100)
 					"auth_jwt require jwt-claim: checking authorization...");
 	if(!r->user){
 		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55101)
@@ -703,7 +703,7 @@ static authz_status jwtclaim_check_authorization(request_rec *r, const char* req
 }
 
 static authz_status jwtclaimarray_check_authorization(request_rec *r, const char* require_args, const void *parsed_require_args){
-	ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, APLOGNO(55107)
+	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55107)
 					"auth_jwt require jwt-claim-array: checking authorization...");
 	if(!r->user){
 		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55108)
@@ -764,7 +764,7 @@ static int auth_jwt_login_handler(request_rec *r){
 		return DECLINED;
 	}
 
-	ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, APLOGNO(55200)
+	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55200)
 							"auth_jwt authn: authentication handler is handling authentication");
 
  	int res;
@@ -855,7 +855,7 @@ static int auth_jwt_login_handler(request_rec *r){
 
 static int create_token(request_rec *r, char** token_str, const char* username){
 	
-	ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, APLOGNO(55300)
+	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55300)
 							"auth_jwt: creating token...");
 
 	jwt_t *token;
@@ -926,7 +926,7 @@ static int create_token(request_rec *r, char** token_str, const char* username){
 }
 
 static int check_authn(request_rec *r, const char *username, const char *password){
-	ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, APLOGNO(55220)
+	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55220)
 							"auth_jwt: authenticating user");
 	authn_status authn_result;
 	authn_provider_list *current_provider;
@@ -1028,7 +1028,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 		return DECLINED;
 	}
 
-	ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, APLOGNO(55400)
+	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55400)
 							"auth_jwt: checking authentication with token...");
 
 	/* We need an authentication realm. */
@@ -1044,7 +1044,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 
 	const char* authSubType = current_auth + 3;
 
-	ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, APLOGNO(55400)
+	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55400)
 							"auth_jwt: authSubType %s", authSubType);
 
 	// 0 wrong value, 2 bearer, 4 cookie, 6 both
@@ -1053,7 +1053,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 		strcmp(authSubType, "-both") == 0 ? 6 :
 		0;
 
-	ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, APLOGNO(55400)
+	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55400)
 							"auth_jwt: delivery_type %i", delivery_type);
 
 	// todo use struct with some predefined static values
@@ -1066,7 +1066,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 	}
 
 	if(delivery_type & 2) {
-		ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, APLOGNO(55402)
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55402)
 								"auth_jwt authn: reading Authorization header...");
 		char* authorization_header = (char*)apr_table_get( r->headers_in, "Authorization");
 
