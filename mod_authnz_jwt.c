@@ -231,7 +231,7 @@ static const command_rec auth_jwt_cmds[] =
 	AP_INIT_TAKE1("AuthJWTCookieAttr", set_jwt_param, (void *)dir_cookie_attr, RSRC_CONF|OR_AUTHCFG,
 					"semi-colon separated attributes for cookie when using cookie delivery. default: "DEFAULT_COOKIE_ATTR),
 	AP_INIT_TAKE1("AuthJWTRemoveCookie", set_jwt_int_param, (void *)dir_cookie_remove, RSRC_CONF|OR_AUTHCFG,
-					"Remove cookie from the headers, and thus keep it private from the backend. default: "DEFAULT_COOKIE_REMOVE),
+					"Remove cookie from the headers, and thus keep it private from the backend. default: 1"),
 	{NULL}
 };
 
@@ -464,15 +464,6 @@ static const char* get_config_value(request_rec *r, jwt_directive directive){
 				return DEFAULT_COOKIE_ATTR;
 			}
 			break;
-		case dir_cookie_remove:
-      if(dconf->cookie_remove_set && dconf->cookie_remove){
-        value = dconf->cookie_remove;
-      }else if(sconf->cookie_remove_set && sconf->cookie_remove){
-        value = sconf->cookie_remove;
-      }else{
-        return DEFAULT_COOKIE_REMOVE;
-      }
-		  break;
 		default:
 			return NULL;
 	}
@@ -483,37 +474,47 @@ static const int get_config_int_value(request_rec *r, jwt_directive directive){
     auth_jwt_config_rec *dconf = (auth_jwt_config_rec *) ap_get_module_config(r->per_dir_config, &auth_jwt_module);
 
 	auth_jwt_config_rec *sconf = (auth_jwt_config_rec *) ap_get_module_config(r->server->module_config, &auth_jwt_module);
-    int value;
-    switch ((jwt_directive) directive) {
-        case dir_exp_delay:
-            if(dconf->exp_delay_set){
-                    value = dconf->exp_delay;
-            }else if(sconf->exp_delay_set){
-                    value = sconf->exp_delay;
-            }else{
-                    return DEFAULT_EXP_DELAY;
-            }
-            break;
-        case dir_nbf_delay:
-            if(dconf->nbf_delay_set){
-                    value = dconf->nbf_delay;
-            }else if(sconf->nbf_delay_set){
-                    value = sconf->nbf_delay;
-            }else{
-                    return DEFAULT_NBF_DELAY;
-            }
-            break;
-        case dir_leeway:
-            if(dconf->leeway){
-                    value = dconf->leeway;
-            }else if(sconf->leeway_set){
-                    value = sconf->leeway;
-            }else{
-                    return DEFAULT_LEEWAY;
-            }
-            break;
-    }
-    return (const int)value;
+
+	int value;
+	switch ((jwt_directive) directive) {
+		case dir_exp_delay:
+			if(dconf->exp_delay_set){
+				value = dconf->exp_delay;
+			}else if(sconf->exp_delay_set){
+				value = sconf->exp_delay;
+			}else{
+				return DEFAULT_EXP_DELAY;
+			}
+			break;
+		case dir_nbf_delay:
+			if(dconf->nbf_delay_set){
+				value = dconf->nbf_delay;
+			}else if(sconf->nbf_delay_set){
+				value = sconf->nbf_delay;
+			}else{
+				return DEFAULT_NBF_DELAY;
+			}
+			break;
+		case dir_leeway:
+			if(dconf->leeway){
+				value = dconf->leeway;
+			}else if(sconf->leeway_set){
+				value = sconf->leeway;
+			}else{
+				return DEFAULT_LEEWAY;
+			}
+			break;
+		case dir_cookie_remove:
+			if(dconf->cookie_remove_set){
+				value = dconf->cookie_remove;
+			}else if(sconf->cookie_remove_set){
+				value = sconf->cookie_remove;
+			}else{
+				return DEFAULT_COOKIE_REMOVE;
+			}
+			break;
+	}
+	return (const int)value;
 }
 
 
