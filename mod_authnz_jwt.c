@@ -1088,7 +1088,8 @@ static int auth_jwt_authn_with_token(request_rec *r){
 		const char* cookie_name = (char *)get_config_value(r, dir_cookie_name);
 		const char* cookieToken;
 
-		ap_cookie_read(r, cookie_name, &token_str, 1);
+		// ap_cookie_read(r, cookie_name, &token_str, 1);
+		ap_cookie_read(r, cookie_name, &token_str, 0);
 
 		if(!token_str) {
 			logCode = APLOGNO(55409);
