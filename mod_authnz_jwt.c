@@ -1110,10 +1110,11 @@ static int auth_jwt_authn_with_token(request_rec *r){
 	}
 
 	if(delivery_type & 4 && !token_str){
+		int cookie_remove = get_config_int_value(r, dir_cookie_remove);
 		const char* cookie_name = (char *)get_config_value(r, dir_cookie_name);
 		const char* cookieToken;
 
-		ap_cookie_read(r, cookie_name, &token_str, dir_cookie_remove);
+		ap_cookie_read(r, cookie_name, &token_str, cookie_remove);
 
 		if(!token_str) {
 			logCode = APLOGNO(55409);
