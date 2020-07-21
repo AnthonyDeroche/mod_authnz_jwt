@@ -232,10 +232,6 @@ static const command_rec auth_jwt_cmds[] =
 					"semi-colon separated attributes for cookie when using cookie delivery. default: "DEFAULT_COOKIE_ATTR),
 	AP_INIT_TAKE1("AuthJWTRemoveCookie", set_jwt_int_param, (void *)dir_cookie_remove, RSRC_CONF|OR_AUTHCFG,
 					"Remove cookie from the headers, and thus keep it private from the backend. default: "DEFAULT_COOKIE_REMOVE),
-
-AuthJWTRemoveCookie
-
-
 	{NULL}
 };
 
