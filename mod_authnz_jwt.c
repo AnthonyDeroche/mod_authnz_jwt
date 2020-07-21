@@ -57,6 +57,7 @@
 #define DEFAULT_SIGNATURE_ALGORITHM "HS256"
 #define DEFAULT_COOKIE_NAME "AuthToken"
 #define DEFAULT_COOKIE_ATTR "Secure;HttpOnly;SameSite"
+#define DEFAULT_COOKIE_REMOVE 1
 
 #define JSON_DELIVERY "Json"
 #define COOKIE_DELIVERY "Cookie"
@@ -114,6 +115,9 @@ typedef struct {
 	const char* cookie_attr;
 	int cookie_attr_set;
 
+	int cookie_remove;
+  int cookie_remove_set;
+
 	char *dir;
 
 } auth_jwt_config_rec;
@@ -134,6 +138,7 @@ typedef enum {
 	dir_delivery_type,
 	dir_cookie_name,
 	dir_cookie_attr,
+	dir_cookie_remove,
 } jwt_directive;
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  FUNCTIONS HEADERS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
@@ -225,6 +230,12 @@ static const command_rec auth_jwt_cmds[] =
 					"Cookie name to use when using cookie delivery"),
 	AP_INIT_TAKE1("AuthJWTCookieAttr", set_jwt_param, (void *)dir_cookie_attr, RSRC_CONF|OR_AUTHCFG,
 					"semi-colon separated attributes for cookie when using cookie delivery. default: "DEFAULT_COOKIE_ATTR),
+	AP_INIT_TAKE1("AuthJWTRemoveCookie", set_jwt_int_param, (void *)dir_cookie_remove, RSRC_CONF|OR_AUTHCFG,
+					"Remove cookie from the headers, and thus keep it private from the backend. default: "DEFAULT_COOKIE_REMOVE),
+
+AuthJWTRemoveCookie
+
+
 	{NULL}
 };
 
@@ -250,6 +261,7 @@ static void *create_auth_jwt_dir_config(apr_pool_t *p, char *d){
 	conf->delivery_type_set=0;
 	conf->cookie_name_set=0;
 	conf->cookie_attr_set=0;
+	conf->cookie_remove_set=0;
 
 	return (void *)conf;
 }
@@ -274,6 +286,7 @@ static void *create_auth_jwt_config(apr_pool_t * p, server_rec *s){
 	conf->delivery_type_set=0;
 	conf->cookie_name_set=0;
 	conf->cookie_attr_set=0;
+	conf->cookie_remove_set=0;
 
 	return (void *)conf;
 }
@@ -316,6 +329,8 @@ static void* merge_auth_jwt_dir_config(apr_pool_t *p, void* basev, void* addv){
 	new->cookie_name_set= base->cookie_name_set || add->cookie_name_set;
 	new->cookie_attr = (add->cookie_attr_set == 0) ? base->cookie_attr : add->cookie_attr;
 	new->cookie_attr_set= base->cookie_attr_set || add->cookie_attr_set;
+	new->cookie_remove = (add->cookie_remove_set == 0) ? base->cookie_remove : add->cookie_remove;
+	new->cookie_remove_set= base->cookie_remove_set || add->cookie_remove_set;
 	return (void*)new;
 }
 
@@ -453,6 +468,15 @@ static const char* get_config_value(request_rec *r, jwt_directive directive){
 				return DEFAULT_COOKIE_ATTR;
 			}
 			break;
+		case dir_cookie_remove:
+      if(dconf->cookie_remove_set && dconf->cookie_remove){
+        value = dconf->cookie_remove;
+      }else if(sconf->cookie_remove_set && sconf->cookie_remove){
+        value = sconf->cookie_remove;
+      }else{
+        return DEFAULT_COOKIE_REMOVE;
+      }
+		  break;
 		default:
 			return NULL;
 	}
@@ -643,6 +667,10 @@ static const char *set_jwt_int_param(cmd_parms * cmd, void* config, const char* 
 			conf->leeway = atoi(value);
 			conf->leeway_set = 1;
 		break;
+    case dir_cookie_remove:
+      conf->cookie_remove = atoi(value);
+      conf->cookie_remove_set = 1;
+    break;
 	}
 	return NULL;
 }
@@ -1088,8 +1116,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 		const char* cookie_name = (char *)get_config_value(r, dir_cookie_name);
 		const char* cookieToken;
 
-		// ap_cookie_read(r, cookie_name, &token_str, 1);
-		ap_cookie_read(r, cookie_name, &token_str, 0);
+		ap_cookie_read(r, cookie_name, &token_str, dir_cookie_remove);
 
 		if(!token_str) {
 			logCode = APLOGNO(55409);
