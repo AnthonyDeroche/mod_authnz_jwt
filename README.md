@@ -367,3 +367,9 @@ With Cookie:
 * **Context**: server config, directory
 * **Default**: Secure;HttpOnly;SameSite
 * **Mandatory**: no
+
+##### AuthJWTRemoveCookie
+* **Description**: Remove cookie from the headers, and thus keep it private from the backend
+* **Context**: server config, directory
+* **Default**: 1
+* **Mandatory**: no
