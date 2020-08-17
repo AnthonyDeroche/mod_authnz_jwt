@@ -116,7 +116,7 @@ typedef struct {
 	int cookie_attr_set;
 
 	int cookie_remove;
-  int cookie_remove_set;
+	int cookie_remove_set;
 
 	char *dir;
 
@@ -664,10 +664,10 @@ static const char *set_jwt_int_param(cmd_parms * cmd, void* config, const char* 
 			conf->leeway = atoi(value);
 			conf->leeway_set = 1;
 		break;
-    case dir_cookie_remove:
-      conf->cookie_remove = atoi(value);
-      conf->cookie_remove_set = 1;
-    break;
+		case dir_cookie_remove:
+			conf->cookie_remove = atoi(value);
+			conf->cookie_remove_set = 1;
+		break;
 	}
 	return NULL;
 }
