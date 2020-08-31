@@ -27,7 +27,7 @@ Although this module is able to deliver valid tokens, it may be used to check to
 
 ### Installation from sources
 ~~~~
-sudo apt-get install libtool pkg-config autoconf libssl-dev check libjansson-dev
+sudo apt install libtool pkg-config autoconf libssl-dev check libjansson-dev make libz-dev
 git clone https://github.com/benmcollins/libjwt
 cd libjwt
 git checkout tags/v1.12.0
@@ -36,7 +36,8 @@ autoreconf -i
 make
 sudo make install
 cd ..
-sudo apt-get install apache2 apache2-dev libz-dev
+
+docker run -d --rm --name httpd_test -p 127.0.0.1:80:80 httpd:2.4
 git clone https://github.com/AnthonyDeroche/mod_authnz_jwt
 cd mod_authnz_jwt
 autoreconf -ivf

@@ -5,6 +5,7 @@
 .libs/*
 tests/__pycache__/*
 .idea
+libjwt 
 
 .deps
 Makefile
