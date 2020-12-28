@@ -25,6 +25,12 @@ Although this module is able to deliver valid tokens, it may be used to check to
 
 ## Quick start
 
+
+### Installation using Docker
+
+See [Dockerfile](https://github.com/AnthonyDeroche/mod_authnz_jwt/blob/master/docker/Dockerfile)
+
+
 ### Installation from sources
 ~~~~
 sudo apt-get install libtool pkg-config autoconf libssl-dev check libjansson-dev
