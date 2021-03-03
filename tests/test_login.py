@@ -31,6 +31,20 @@ class TestLogin(TestJWT):
         self.assertToken(received_object["token"], public_key, alg)
 
     @TestJWT.with_all_algorithms(algorithms=("HS256", "RS256", "ES256"))
+    def test_login_should_success_with_custom_token_name(self, alg, public_key, private_key, secured_url, login_url):
+        code, content, headers, cookies = self.http_post(login_url + "/token_custom_name", {self.USERNAME_FIELD:self.USERNAME, self.PASSWORD_FIELD:self.PASSWORD})
+
+        # we expect return code 200, JSON content type
+        self.assertEqual(code, 200)
+        self.assertEqual(headers.get("Content-Type"), "application/json")
+
+        # we check if the JSON object is correct and token is valid
+        received_object = json.loads(content)
+        self.assertTrue("CustomToken" in received_object)
+
+        self.assertToken(received_object["CustomToken"], public_key, alg)
+
+    @TestJWT.with_all_algorithms(algorithms=("HS256", "RS256", "ES256"))
     def test_login_with_bad_credentials_should_fail(self, alg, public_key, private_key, secured_url, login_url):
         code, content, headers, cookies = self.http_post(login_url, {self.USERNAME_FIELD:self.USERNAME, self.PASSWORD_FIELD:"azerty"})
         self.assertEqual(code, 401)

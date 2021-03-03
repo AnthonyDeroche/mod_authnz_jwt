@@ -55,6 +55,7 @@
 #define DEFAULT_FORM_PASSWORD "password"
 #define DEFAULT_ATTRIBUTE_USERNAME "user"
 #define DEFAULT_SIGNATURE_ALGORITHM "HS256"
+#define DEFAULT_TOKEN_NAME "token"
 #define DEFAULT_COOKIE_NAME "AuthToken"
 #define DEFAULT_COOKIE_ATTR "Secure;HttpOnly;SameSite"
 #define DEFAULT_COOKIE_REMOVE 1
@@ -109,6 +110,9 @@ typedef struct {
 	const char* delivery_type;
 	int delivery_type_set;
 
+	const char* token_name;
+	int token_name_set;
+
 	const char* cookie_name;
 	int cookie_name_set;
 
@@ -136,6 +140,7 @@ typedef enum {
 	dir_form_password,
 	dir_attribute_username,
 	dir_delivery_type,
+	dir_token_name,
 	dir_cookie_name,
 	dir_cookie_attr,
 	dir_cookie_remove,
@@ -226,6 +231,8 @@ static const command_rec auth_jwt_cmds[] =
 					"The name of the attribute containing the username in the token"),
 	AP_INIT_TAKE1("AuthJWTDeliveryType", set_jwt_param, (void *)dir_delivery_type, RSRC_CONF|OR_AUTHCFG,
 					"Type of token delivery Json (default) or Cookie"),
+	AP_INIT_TAKE1("AuthJWTTokenName", set_jwt_param, (void *)dir_token_name, RSRC_CONF|OR_AUTHCFG,
+					"Token name to use when using JSON delivery"),
 	AP_INIT_TAKE1("AuthJWTCookieName", set_jwt_param, (void *)dir_cookie_name, RSRC_CONF|OR_AUTHCFG,
 					"Cookie name to use when using cookie delivery"),
 	AP_INIT_TAKE1("AuthJWTCookieAttr", set_jwt_param, (void *)dir_cookie_attr, RSRC_CONF|OR_AUTHCFG,
@@ -255,6 +262,7 @@ static void *create_auth_jwt_dir_config(apr_pool_t *p, char *d){
 	conf->form_password_set=0;
 	conf->attribute_username_set=0;
 	conf->delivery_type_set=0;
+	conf->token_name_set=0;
 	conf->cookie_name_set=0;
 	conf->cookie_attr_set=0;
 	conf->cookie_remove_set=0;
@@ -280,6 +288,7 @@ static void *create_auth_jwt_config(apr_pool_t * p, server_rec *s){
 	conf->form_password_set=0;
 	conf->attribute_username_set=0;
 	conf->delivery_type_set=0;
+	conf->token_name_set=0;
 	conf->cookie_name_set=0;
 	conf->cookie_attr_set=0;
 	conf->cookie_remove_set=0;
@@ -321,6 +330,8 @@ static void* merge_auth_jwt_dir_config(apr_pool_t *p, void* basev, void* addv){
 	new->attribute_username_set = base->attribute_username_set || add->attribute_username_set;
 	new->delivery_type = (add->delivery_type_set == 0) ? base->delivery_type : add->delivery_type;
 	new->delivery_type_set = base->delivery_type_set || add->delivery_type_set;
+	new->token_name = (add->token_name_set == 0) ? base->token_name : add->token_name;
+	new->token_name_set= base->token_name_set || add->token_name_set;
 	new->cookie_name = (add->cookie_name_set == 0) ? base->cookie_name : add->cookie_name;
 	new->cookie_name_set= base->cookie_name_set || add->cookie_name_set;
 	new->cookie_attr = (add->cookie_attr_set == 0) ? base->cookie_attr : add->cookie_attr;
@@ -444,6 +455,15 @@ static const char* get_config_value(request_rec *r, jwt_directive directive){
 				value = sconf->delivery_type;
 			}else{
 				return DEFAULT_DELIVERY_TYPE;
+			}
+			break;
+		case dir_token_name:
+			if(dconf->token_name_set && dconf->token_name){
+				value = dconf->token_name;
+			}else if(sconf->token_name_set && sconf->token_name){
+				value = sconf->token_name;
+			}else{
+				return DEFAULT_TOKEN_NAME;
 			}
 			break;
 		case dir_cookie_name:
@@ -617,6 +637,10 @@ static const char *set_jwt_param(cmd_parms * cmd, void* config, const char* valu
 			} else {
 				apr_psprintf(cmd->pool, "Invalid delivery type, must be %s or %s (case sensitive). Fallback to Json.", JSON_DELIVERY, COOKIE_DELIVERY);
 			}
+		break;
+		case dir_token_name:
+			conf->token_name = value;
+			conf->token_name_set = 1;
 		break;
 		case dir_cookie_name:
 			if(ap_cookie_check_string(value) == APR_SUCCESS) {
@@ -866,8 +890,9 @@ static int auth_jwt_login_handler(request_rec *r){
 				ap_cookie_write(r, cookie_name, token, cookie_attr, 0,
 					r->headers_out, NULL);
 			} else {
+				char* token_name = (char *)get_config_value(r, dir_token_name);
 				apr_table_setn(r->err_headers_out, "Content-Type", "application/json");
-				ap_rprintf(r, "{\"token\":\"%s\"}", token);
+				ap_rprintf(r, "{\"%s\":\"%s\"}", token_name, token);
 			}
 
 			free(token);
