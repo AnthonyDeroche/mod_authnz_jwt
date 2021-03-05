@@ -1123,7 +1123,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 	}
 
 	if(!token_str) {
-		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, logCode, logStr);
+		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "%s%s", logCode, logStr);
 		apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool, "realm=\"", ap_auth_name(r),"\"", errorStr, NULL));
 		return HTTP_UNAUTHORIZED;
 	}
