@@ -362,6 +362,12 @@ With Cookie:
 * **Possibles values**: JSON, Cookie
 * **Mandatory**: no
 
+##### AuthJWTTokenName
+* **Description**: Token name to use when using JSON delivery
+* **Context**: server config, directory
+* **Default**: token
+* **Mandatory**: no
+
 ##### AuthJWTCookieName
 * **Description**: Cookie name to use when using cookie delivery
 * **Context**: server config, directory
