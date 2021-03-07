@@ -84,6 +84,7 @@ typedef struct {
 
 	int exp_delay;
 	int exp_delay_set;
+   apr_hash_t *user_exp_delay;
 
 	int nbf_delay;
 	int nbf_delay_set;
@@ -127,7 +128,6 @@ typedef enum {
 	dir_signature_shared_secret, 
 	dir_signature_public_key_file,
 	dir_signature_private_key_file,
-	dir_exp_delay, 
 	dir_nbf_delay, 
 	dir_iss,
 	dir_aud, 
@@ -153,8 +153,10 @@ static void register_hooks(apr_pool_t * p);
 static const char *add_authn_provider(cmd_parms * cmd, void *config, const char *arg);
 static const char *set_jwt_param(cmd_parms * cmd, void* config, const char* value);
 static const char *set_jwt_int_param(cmd_parms * cmd, void* config, const char* value);
+static const char *set_jwt_exp_delay(cmd_parms * cmd, void* config, int argc, char *const argv[]);
 static const char* get_config_value(request_rec *r, jwt_directive directive);
 static const int get_config_int_value(request_rec *r, jwt_directive directive);
+static const int get_config_exp_delay(request_rec *r, const char *username);
 
 static const char *jwt_parse_config(cmd_parms *cmd, const char *require_line, const void **parsed_require_line);
 static authz_status jwtclaim_check_authorization(request_rec *r, const char* require_args, const void *parsed_require_args);
@@ -210,11 +212,11 @@ static const command_rec auth_jwt_cmds[] =
 					"The issuer of delievered tokens"),
 	AP_INIT_TAKE1("AuthJWTAud", set_jwt_param, (void *)dir_aud, RSRC_CONF|OR_AUTHCFG,
 					"The audience of delivered tokens"),
-   	AP_INIT_TAKE1("AuthJWTExpDelay", set_jwt_int_param, (void *)dir_exp_delay, RSRC_CONF|OR_AUTHCFG,
+   AP_INIT_TAKE_ARGV("AuthJWTExpDelay", set_jwt_exp_delay, NULL, RSRC_CONF|OR_AUTHCFG,
 					"The time delay in seconds after which delivered tokens are considered invalid"),
-   	AP_INIT_TAKE1("AuthJWTNbfDelay", set_jwt_int_param, (void *)dir_nbf_delay, RSRC_CONF|OR_AUTHCFG,
+   AP_INIT_TAKE1("AuthJWTNbfDelay", set_jwt_int_param, (void *)dir_nbf_delay, RSRC_CONF|OR_AUTHCFG,
 					"The time delay in seconds before which delivered tokens must not be processed"),
-   	AP_INIT_TAKE1("AuthJWTLeeway", set_jwt_int_param, (void *)dir_leeway, RSRC_CONF|OR_AUTHCFG,
+   AP_INIT_TAKE1("AuthJWTLeeway", set_jwt_int_param, (void *)dir_leeway, RSRC_CONF|OR_AUTHCFG,
 					"The leeway to account for clock skew in token validation process"),
 	AP_INIT_ITERATE("AuthJWTProvider", add_authn_provider, NULL, OR_AUTHCFG,
 					"Specify the auth providers for a directory or location"),
@@ -247,6 +249,7 @@ static void *create_auth_jwt_dir_config(apr_pool_t *p, char *d){
 	conf->signature_public_key_file_set = 0;
 	conf->signature_private_key_file_set = 0;
 	conf->exp_delay_set = 0;
+	conf->user_exp_delay = NULL;
 	conf->nbf_delay_set = 0;
 	conf->leeway_set = 0;
 	conf->iss_set = 0;
@@ -272,6 +275,7 @@ static void *create_auth_jwt_config(apr_pool_t * p, server_rec *s){
 	conf->signature_public_key_file_set = 0;
 	conf->signature_private_key_file_set = 0;
 	conf->exp_delay_set = 0;
+	conf->user_exp_delay = NULL;
 	conf->nbf_delay_set = 0;
 	conf->leeway_set = 0;
 	conf->iss_set = 0;
@@ -305,6 +309,7 @@ static void* merge_auth_jwt_dir_config(apr_pool_t *p, void* basev, void* addv){
 
 	new->exp_delay = (add->exp_delay_set == 0) ? base->exp_delay : add->exp_delay;
 	new->exp_delay_set = base->exp_delay_set || add->exp_delay_set;
+	new->user_exp_delay = (add->user_exp_delay == NULL) ? base->user_exp_delay : add->user_exp_delay;
 	new->nbf_delay = (add->nbf_delay_set == 0) ? base->nbf_delay : add->nbf_delay;
 	new->nbf_delay_set = base->nbf_delay_set || add->nbf_delay_set;
 	new->leeway = (add->leeway_set == 0) ? base->leeway : add->leeway;
@@ -477,15 +482,6 @@ static const int get_config_int_value(request_rec *r, jwt_directive directive){
 
 	int value;
 	switch ((jwt_directive) directive) {
-		case dir_exp_delay:
-			if(dconf->exp_delay_set){
-				value = dconf->exp_delay;
-			}else if(sconf->exp_delay_set){
-				value = sconf->exp_delay;
-			}else{
-				return DEFAULT_EXP_DELAY;
-			}
-			break;
 		case dir_nbf_delay:
 			if(dconf->nbf_delay_set){
 				value = dconf->nbf_delay;
@@ -517,6 +513,40 @@ static const int get_config_int_value(request_rec *r, jwt_directive directive){
 	return (const int)value;
 }
 
+static const int get_config_exp_delay(request_rec *r, const char *username){
+	auth_jwt_config_rec *dconf = (auth_jwt_config_rec *) ap_get_module_config(r->per_dir_config, &auth_jwt_module);
+	auth_jwt_config_rec *sconf = (auth_jwt_config_rec *) ap_get_module_config(r->server->module_config, &auth_jwt_module);
+	int *value;
+
+	/*
+	 * Check in the following order:
+	 *  - dconf: user_exp_delay
+	 *  - sconf: user_exp_delay
+	 *  - dconf: exp_delay
+	 *  - sconf: exp_delay
+	 */
+	if (dconf->user_exp_delay != NULL) {
+		value = apr_hash_get(dconf->user_exp_delay, username, APR_HASH_KEY_STRING);
+		if (value) {
+			return *value;
+		}
+	}
+	else if (sconf->user_exp_delay != NULL) {
+		value = apr_hash_get(sconf->user_exp_delay, username, APR_HASH_KEY_STRING);
+		if (value) {
+			return *value;
+		}
+	}
+	else if (dconf->exp_delay_set) {
+		return dconf->exp_delay;
+	}
+	else if (sconf->exp_delay_set) {
+		return sconf->exp_delay;
+	}
+	else {
+		return DEFAULT_EXP_DELAY;
+	}
+}
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  REGISTER HOOKS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
 
@@ -530,6 +560,17 @@ static void register_hooks(apr_pool_t * p){
 
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  DIRECTIVE HANDLERS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
+
+static int is_numeric(const char *value){
+	while (*value) {
+		if (!apr_isdigit(*value)) {
+			return 0;
+		}
+		value++;
+	}
+
+	return 1;
+}
 
 static const char *add_authn_provider(cmd_parms * cmd, void *config, const char *arg)
 {
@@ -644,18 +685,11 @@ static const char *set_jwt_int_param(cmd_parms * cmd, void* config, const char* 
 		conf = (auth_jwt_config_rec *) config;
 	}
 
-	const char *digit;
-	for (digit = value; *digit; ++digit) {
-		if (!apr_isdigit(*digit)) {
-			return "Argument must be numeric!";
-		}
+	if (!is_numeric(value)) {
+		return "Argument must be numeric!";
 	}
 
 	switch ((long) cmd->info) {
-		case dir_exp_delay:
-			conf->exp_delay = atoi(value);
-			conf->exp_delay_set = 1;
-		break;
 		case dir_nbf_delay:
 			conf->nbf_delay = atoi(value);
 			conf->nbf_delay_set = 1;
@@ -669,6 +703,49 @@ static const char *set_jwt_int_param(cmd_parms * cmd, void* config, const char* 
 			conf->cookie_remove_set = 1;
 		break;
 	}
+	return NULL;
+}
+
+
+static const char *set_jwt_exp_delay(cmd_parms * cmd, void* config, int argc, char *const argv[]){
+
+	auth_jwt_config_rec *conf;
+	int i;
+	int *delay;
+
+	if (!cmd->path){
+		conf = (auth_jwt_config_rec *) ap_get_module_config(cmd->server->module_config, &auth_jwt_module);
+	} else {
+		conf = (auth_jwt_config_rec *) config;
+	}
+
+	if (argc == 0) {
+		return "AuthJWTExpDelay must have at least 1 argument";
+	}
+
+	/* The final argument must be numeric */
+	if (!is_numeric(argv[argc-1])) {
+		return "AuthJWTExpDelay delay must be numeric!";
+	}
+
+	if (argc == 1) {
+		/* No users provided */
+		conf->exp_delay = atoi(argv[argc-1]);
+		conf->exp_delay_set = 1;
+		return NULL;
+	}
+
+	/* Users provided */
+	if (conf->user_exp_delay == NULL) {
+		conf->user_exp_delay = apr_hash_make(cmd->pool);
+	}
+
+	delay = apr_palloc(cmd->pool, sizeof(int));
+	*delay = atoi(argv[argc-1]);
+	for (i = 0; i < argc-1; i++) {
+		apr_hash_set(conf->user_exp_delay, apr_pstrdup(cmd->pool, argv[i]), APR_HASH_KEY_STRING, delay);
+	}
+
 	return NULL;
 }
 
@@ -904,7 +981,7 @@ static int create_token(request_rec *r, char** token_str, const char* username){
 
 	char* iss = (char *)get_config_value(r, dir_iss);
 	char* aud = (char *)get_config_value(r, dir_aud);
-	int exp_delay = get_config_int_value(r, dir_exp_delay);
+	int exp_delay = get_config_exp_delay(r, username);
 	int nbf_delay = get_config_int_value(r, dir_nbf_delay);
 
 	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55305)

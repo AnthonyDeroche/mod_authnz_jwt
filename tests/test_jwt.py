@@ -19,6 +19,7 @@ class TestJWT(unittest.TestCase):
     USERNAME_FIELD = "user"
     PASSWORD_FIELD = "password"
     JWT_EXPDELAY = 1800
+    JWT_USER_EXPDELAY = 7200
     JWT_NBF_DELAY = 0
     JWT_ISS = "testjwt.local"
     JWT_AUD = "tests"
