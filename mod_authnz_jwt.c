@@ -899,6 +899,7 @@ static int create_token(request_rec *r, char** token_str, const char* username){
 	if(keylen == 0){
 		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55302)
 							"auth_jwt create_token: key used for signature is empty");
+		token_free(token);
 		return HTTP_INTERNAL_SERVER_ERROR;
 	}
 
@@ -911,9 +912,9 @@ static int create_token(request_rec *r, char** token_str, const char* username){
 							"auth_jwt create_token: using algorithm %s (key length=%d)...", signature_algorithm, keylen);
 
 	if(token_set_alg(r, token, signature_algorithm, sign_key, keylen)!=0){
-        return HTTP_INTERNAL_SERVER_ERROR;
-    }
-	
+		token_free(token);
+		return HTTP_INTERNAL_SERVER_ERROR;
+	}
 
 	time_t now = time(NULL);
 	time_t iat = now;
