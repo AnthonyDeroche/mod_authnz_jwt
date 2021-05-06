@@ -320,9 +320,13 @@ With Cookie:
 * **Mandatory**: no
 
 ##### AuthJWTExpDelay 
-* **Description**: The time delay in seconds after which delivered tokens are considered invalid
+* **Description**: The time delay in seconds after which delivered tokens are considered invalid. Can be restricted to one or more users by providing a list of names.
 * **Context**: server config, directory
 * **Default**: 1800
+* **Examples**:
+   * AuthJWTExpDelay 3600
+   * AuthJWTExpDelay user1 7200
+   * AuthJWTExpDelay user1 user2 1800
 * **Mandatory**: no
 
 ##### AuthJWTNbfDelay 

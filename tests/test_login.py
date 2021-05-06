@@ -103,3 +103,15 @@ class TestLogin(TestJWT):
             self.assertTrue(c.has_nonstandard_attr('CustomAttr'))
 
             self.assertToken(c.value, public_key, alg)
+
+    @TestJWT.with_all_algorithms(algorithms=("HS256",))
+    def test_login_should_success_with_user_exp_delay(self, alg, public_key, private_key, secured_url, login_url):
+        code, content, headers, cookies = self.http_post(login_url + "/user_exp_delay", {self.USERNAME_FIELD:self.USERNAME, self.PASSWORD_FIELD:self.PASSWORD})
+
+        self.assertEqual(code, 200)
+
+        received_object = json.loads(content)
+        self.assertTrue("token" in received_object)
+
+        jwt_fields = self.decode_jwt(received_object["token"], public_key, alg)
+        self.assertEqual(int(jwt_fields["exp"])-int(jwt_fields["iat"]), self.JWT_USER_EXPDELAY)
