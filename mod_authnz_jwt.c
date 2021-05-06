@@ -531,21 +531,23 @@ static const int get_config_exp_delay(request_rec *r, const char *username){
 			return *value;
 		}
 	}
-	else if (sconf->user_exp_delay != NULL) {
+
+	if (sconf->user_exp_delay != NULL) {
 		value = apr_hash_get(sconf->user_exp_delay, username, APR_HASH_KEY_STRING);
 		if (value) {
 			return *value;
 		}
 	}
-	else if (dconf->exp_delay_set) {
+
+	if (dconf->exp_delay_set) {
 		return dconf->exp_delay;
 	}
-	else if (sconf->exp_delay_set) {
+
+	if (sconf->exp_delay_set) {
 		return sconf->exp_delay;
 	}
-	else {
-		return DEFAULT_EXP_DELAY;
-	}
+
+	return DEFAULT_EXP_DELAY;
 }
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  REGISTER HOOKS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
