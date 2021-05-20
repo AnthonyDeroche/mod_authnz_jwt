@@ -499,6 +499,15 @@ static const char* get_config_value(request_rec *r, jwt_directive directive){
 				return DEFAULT_COOKIE_ATTR;
 			}
 			break;
+		case dir_query_parameter_name:
+			if(dconf->query_parameter_name_set && dconf->query_parameter_name){
+				value = dconf->query_parameter_name;
+			}else if(sconf->query_parameter_name_set && sconf->query_parameter_name){
+				value = sconf->query_parameter_name;
+			}else{
+				return DEFAULT_QUERY_PARAMETER_NAME;
+			}
+			break;
 		default:
 			return NULL;
 	}
@@ -1095,6 +1104,8 @@ typedef struct
 
 static bool find_query_paramter(const char* query, const char* parameter_name, token_range_t* result)
 {
+    if (query == NULL | parameter_name == NULL)
+        return false;
 	const size_t name_len = strlen(parameter_name);
 	const size_t query_len = strlen(query);
 	const char* token_start = query;
@@ -1207,7 +1218,6 @@ static int auth_jwt_authn_with_token(request_rec *r){
 	if(delivery_type & 8 && !token_str){
 		int query_parameter_remove = get_config_int_value(r, dir_query_parameter_remove);
 		const char* query_parameter_name = (char *)get_config_value(r, dir_query_parameter_name);
-
 		token_range_t token_range;
 		if (find_query_paramter(r->args, query_parameter_name, &token_range))
 		{
