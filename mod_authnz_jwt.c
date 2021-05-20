@@ -60,6 +60,8 @@
 #define DEFAULT_COOKIE_ATTR "Secure;HttpOnly;SameSite"
 #define DEFAULT_COOKIE_REMOVE 1
 
+#define DEFAULT_QUERY_PARAMETER_NAME "AuthToken"
+
 #define JSON_DELIVERY "Json"
 #define COOKIE_DELIVERY "Cookie"
 #define DEFAULT_DELIVERY_TYPE JSON_DELIVERY
@@ -122,6 +124,12 @@ typedef struct {
 	int cookie_remove;
 	int cookie_remove_set;
 
+	const char* query_parameter_name;
+	int query_parameter_name_set;
+
+	int query_parameter_remove;
+	int query_parameter_remove_set;
+
 	char *dir;
 
 } auth_jwt_config_rec;
@@ -144,6 +152,8 @@ typedef enum {
 	dir_cookie_name,
 	dir_cookie_attr,
 	dir_cookie_remove,
+	dir_query_parameter_name,
+	dir_query_parameter_remove,
 } jwt_directive;
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  FUNCTIONS HEADERS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
@@ -238,6 +248,10 @@ static const command_rec auth_jwt_cmds[] =
 	AP_INIT_TAKE1("AuthJWTCookieAttr", set_jwt_param, (void *)dir_cookie_attr, RSRC_CONF|OR_AUTHCFG,
 					"semi-colon separated attributes for cookie when using cookie delivery. default: "DEFAULT_COOKIE_ATTR),
 	AP_INIT_TAKE1("AuthJWTRemoveCookie", set_jwt_int_param, (void *)dir_cookie_remove, RSRC_CONF|OR_AUTHCFG,
+					"Remove cookie from the headers, and thus keep it private from the backend. default: 1"),
+	AP_INIT_TAKE1("AuthJWTQueryParameterName", set_jwt_param, (void *)dir_query_parameter_name, RSRC_CONF|OR_AUTHCFG,
+					"semi-colon separated attributes for query when using cookie delivery. default: "DEFAULT_QUERY_PARAMETER_NAME),
+	AP_INIT_TAKE1("AuthJWTRemoveQueryParameter", set_jwt_int_param, (void *)dir_query_parameter_remove, RSRC_CONF|OR_AUTHCFG,
 					"Remove cookie from the headers, and thus keep it private from the backend. default: 1"),
 	{NULL}
 };
@@ -1070,6 +1084,39 @@ If we are configured to handle authentication, let's look up headers to find
 whether or not 'Authorization' is set. If so, exepected format is
 Authorization: Bearer json_web_token. Then we check if the token is valid.
 */
+
+struct token_range_t
+{
+	char* begin;
+	char* end;
+	char* value_begin;
+};
+static bool find_query_paramter(const char* query, const char* parameter_name, token_range_t* result)
+{
+	const size_t name_len = strlen(parameter_name);
+	const size_t query_len = strlen(query);
+	const char* token_start = query;
+	const char* query_end = query + query_len;
+	while (token_start < query_end)
+	{
+		const char* token_end = strchr(token_start, '&');
+		if (token_end == NULL)
+			token_end = query_end;
+		const size_t token_len = token_end - token_start;
+		if (
+			token_len > name_len &&
+			memcmp(token_start, parameter_name, name_len) == 0 &&
+			token_start[name_len] == '='
+		)
+		{
+			*result = token_range_t{token_start, token_end, token_start + name_len + 1};
+			return true;
+		}
+		token_start = token_end + 1;
+	}
+	return false;
+}
+
 static int auth_jwt_authn_with_token(request_rec *r){
 	const char *current_auth = NULL;
 	current_auth = ap_auth_type(r);
@@ -1099,10 +1146,17 @@ static int auth_jwt_authn_with_token(request_rec *r){
 							"auth_jwt: authSubType %s", authSubType);
 
 	// 0 wrong value, 2 bearer, 4 cookie, 6 both
-	const int delivery_type = (strlen(authSubType) == 0 || strcmp(authSubType, "-bearer") == 0) ? 2 :
-		strcmp(authSubType, "-cookie") == 0 ? 4 :
-		strcmp(authSubType, "-both") == 0 ? 6 :
-		0;
+	const int delivery_type = 0;
+	if (strcmp(authSubType, "-bearer") == 0)
+		delivery_type = 2;
+	else if (strcmp(authSubType, "-cookie") == 0)
+		delivery_type = 4;
+	else if (strcmp(authSubType, "-both") == 0)
+		delivery_type = 6;
+	else if (strcmp(authSubType, "-query") == 0)
+		delivery_type = 8;
+	else if (strcmp(authSubType, "-all") == 0)
+		delivery_type = 14;
 
 	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55400)
 							"auth_jwt: delivery_type %i", delivery_type);
@@ -1111,6 +1165,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 	char* logCode = APLOGNO(55401);
 	char* logStr = "auth_jwt authn: unexpected error";
 	char* errorStr = NULL;
+	bool free_token_str = false;
 
 	if (delivery_type == 0) {
 		return DECLINED;
@@ -1131,20 +1186,38 @@ static int auth_jwt_authn_with_token(request_rec *r){
 			}
 		} else {
 			logCode = APLOGNO(55404);
-			logStr = "auth_jwt authn: missing Authorization header, responding with WWW-Authenticate header...";
+			logStr = "auth_jwt authn: missing Authorization header";
 		}
 	}
 
 	if(delivery_type & 4 && !token_str){
 		int cookie_remove = get_config_int_value(r, dir_cookie_remove);
 		const char* cookie_name = (char *)get_config_value(r, dir_cookie_name);
-		const char* cookieToken;
 
 		ap_cookie_read(r, cookie_name, &token_str, cookie_remove);
 
 		if(!token_str) {
-			logCode = APLOGNO(55409);
-			logStr = "auth_jwt authn: missing authorization cookie";
+			logCode = APLOGNO(55404);
+			logStr = "auth_jwt authn: missing Authorization cookie";
+		}
+	}
+
+	if(delivery_type & 8 && !token_str){
+		int query_parameter_remove = get_config_int_value(r, dir_query_parameter_remove);
+		const char* query_parameter_name = (char *)get_config_value(r, dir_query_parameter_name);
+
+		token_range_t token_range;
+		if (find_query_paramter(r->args, query_parameter_name, token_range))
+		{
+			size_t token_length = token_range.end - token_range.value_begin;
+			token_str = (char*)malloc(token_length + 1);
+			memcpy(token_str, token_range.value_begin, token_length);
+			token_str[token_length] = 0;
+		}
+		else
+		{
+			logCode = APLOGNO(55404);
+			logStr = "auth_jwt authn: missing Authorization query parameter";
 		}
 	}
 
@@ -1162,6 +1235,8 @@ static int auth_jwt_authn_with_token(request_rec *r){
 	if(keylen == 0){
 		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55403)
 							"auth_jwt authn: key used to check signature is empty");
+		if (free_token_str)
+			free(token_str);
 		return HTTP_INTERNAL_SERVER_ERROR;
 	}
 
@@ -1169,6 +1244,9 @@ static int auth_jwt_authn_with_token(request_rec *r){
 	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55405)
 						"auth_jwt authn: checking signature and fields correctness...");
 	rv = token_check(r, &token, token_str, key, keylen);
+
+	if (free_token_str)
+		free(token_str);
 
 	if(OK == rv){
 		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55406)
