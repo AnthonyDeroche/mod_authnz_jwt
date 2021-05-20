@@ -1215,7 +1215,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 			token_str_buffer = (char*)malloc(token_length + 1);
 			memcpy(token_str_buffer, token_range.value_begin, token_length);
 			token_str_buffer[token_length] = 0;
-                        token_str = token_str_buffer;
+			token_str = token_str_buffer;
 		}
 		else
 		{
