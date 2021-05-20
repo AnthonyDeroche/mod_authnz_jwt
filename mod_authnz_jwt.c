@@ -17,6 +17,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 
 // RFC 7519 compliant library
 #include "jwt.h"
@@ -1085,12 +1086,13 @@ whether or not 'Authorization' is set. If so, exepected format is
 Authorization: Bearer json_web_token. Then we check if the token is valid.
 */
 
-struct token_range_t
+typedef struct
 {
-	char* begin;
-	char* end;
-	char* value_begin;
-};
+	const char* begin;
+	const char* end;
+	const char* value_begin;
+} token_range_t;
+
 static bool find_query_paramter(const char* query, const char* parameter_name, token_range_t* result)
 {
 	const size_t name_len = strlen(parameter_name);
@@ -1109,7 +1111,7 @@ static bool find_query_paramter(const char* query, const char* parameter_name, t
 			token_start[name_len] == '='
 		)
 		{
-			*result = token_range_t{token_start, token_end, token_start + name_len + 1};
+			*result = (token_range_t){token_start, token_end, token_start + name_len + 1};
 			return true;
 		}
 		token_start = token_end + 1;
@@ -1146,7 +1148,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 							"auth_jwt: authSubType %s", authSubType);
 
 	// 0 wrong value, 2 bearer, 4 cookie, 6 both
-	const int delivery_type = 0;
+	int delivery_type = 0;
 	if (strcmp(authSubType, "-bearer") == 0)
 		delivery_type = 2;
 	else if (strcmp(authSubType, "-cookie") == 0)
@@ -1165,7 +1167,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 	char* logCode = APLOGNO(55401);
 	char* logStr = "auth_jwt authn: unexpected error";
 	char* errorStr = NULL;
-	bool free_token_str = false;
+        char* token_str_buffer = NULL;
 
 	if (delivery_type == 0) {
 		return DECLINED;
@@ -1207,12 +1209,13 @@ static int auth_jwt_authn_with_token(request_rec *r){
 		const char* query_parameter_name = (char *)get_config_value(r, dir_query_parameter_name);
 
 		token_range_t token_range;
-		if (find_query_paramter(r->args, query_parameter_name, token_range))
+		if (find_query_paramter(r->args, query_parameter_name, &token_range))
 		{
 			size_t token_length = token_range.end - token_range.value_begin;
-			token_str = (char*)malloc(token_length + 1);
-			memcpy(token_str, token_range.value_begin, token_length);
-			token_str[token_length] = 0;
+			token_str_buffer = (char*)malloc(token_length + 1);
+			memcpy(token_str_buffer, token_range.value_begin, token_length);
+			token_str_buffer[token_length] = 0;
+                        token_str = token_str_buffer;
 		}
 		else
 		{
@@ -1235,8 +1238,8 @@ static int auth_jwt_authn_with_token(request_rec *r){
 	if(keylen == 0){
 		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55403)
 							"auth_jwt authn: key used to check signature is empty");
-		if (free_token_str)
-			free(token_str);
+		if (token_str_buffer)
+			free(token_str_buffer);
 		return HTTP_INTERNAL_SERVER_ERROR;
 	}
 
@@ -1245,8 +1248,8 @@ static int auth_jwt_authn_with_token(request_rec *r){
 						"auth_jwt authn: checking signature and fields correctness...");
 	rv = token_check(r, &token, token_str, key, keylen);
 
-	if (free_token_str)
-		free(token_str);
+	if (token_str_buffer)
+		free(token_str_buffer);
 
 	if(OK == rv){
 		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55406)
