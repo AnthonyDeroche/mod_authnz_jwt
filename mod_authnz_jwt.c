@@ -1250,7 +1250,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 				size_t query_len = strlen(r->args);
 				if (query_len == token_range.end - token_range.begin)
 				{
-					r->args[0] = 0;
+					r->args = NULL;
 				}
 				else
 				{
