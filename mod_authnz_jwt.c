@@ -572,7 +572,6 @@ static const int get_config_int_value(request_rec *r, jwt_directive directive){
 			}
 			break;
 		default:
-			apr_psprintf(cmd->pool, "Invalid int parameter.");
 			return 0;
 	}
 	return (const int)value;
