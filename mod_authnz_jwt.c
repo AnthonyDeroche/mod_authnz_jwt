@@ -354,10 +354,10 @@ static void* merge_auth_jwt_dir_config(apr_pool_t *p, void* basev, void* addv){
 	new->cookie_attr_set= base->cookie_attr_set || add->cookie_attr_set;
 	new->cookie_remove = (add->cookie_remove_set == 0) ? base->cookie_remove : add->cookie_remove;
 	new->cookie_remove_set= base->cookie_remove_set || add->cookie_remove_set;
-	new->query_paramter_name = (add->query_paramter_name_set == 0) ? base->query_paramter_name : add->query_paramter_name;
-	new->query_paramter_name_set= base->query_paramter_name_set || add->query_paramter_name_set;
-	new->query_paramter_remove = (add->query_paramter_remove_set == 0) ? base->query_paramter_remove : add->query_paramter_remove;
-	new->query_paramter_remove_set= base->query_paramter_remove_set || add->query_paramter_remove_set;
+	new->query_parameter_name = (add->query_parameter_name_set == 0) ? base->query_parameter_name : add->query_parameter_name;
+	new->query_parameter_name_set= base->query_parameter_name_set || add->query_parameter_name_set;
+	new->query_parameter_remove = (add->query_parameter_remove_set == 0) ? base->query_parameter_remove : add->query_parameter_remove;
+	new->query_parameter_remove_set= base->query_parameter_remove_set || add->query_parameter_remove_set;
 	return (void*)new;
 }
 
@@ -1116,7 +1116,7 @@ typedef struct
 	const char* value_begin;
 } token_range_t;
 
-static bool find_query_paramter(const char* query, const char* parameter_name, token_range_t* result)
+static bool find_query_parameter(const char* query, const char* parameter_name, token_range_t* result)
 {
     if (query == NULL | parameter_name == NULL)
         return false;
@@ -1233,7 +1233,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 		int query_parameter_remove = get_config_int_value(r, dir_query_parameter_remove);
 		const char* query_parameter_name = (char *)get_config_value(r, dir_query_parameter_name);
 		token_range_t token_range;
-		if (find_query_paramter(r->args, query_parameter_name, &token_range))
+		if (find_query_parameter(r->args, query_parameter_name, &token_range))
 		{
 			size_t token_length = token_range.end - token_range.value_begin;
 			token_str_buffer = (char*)malloc(token_length + 1);
