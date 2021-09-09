@@ -354,6 +354,10 @@ static void* merge_auth_jwt_dir_config(apr_pool_t *p, void* basev, void* addv){
 	new->cookie_attr_set= base->cookie_attr_set || add->cookie_attr_set;
 	new->cookie_remove = (add->cookie_remove_set == 0) ? base->cookie_remove : add->cookie_remove;
 	new->cookie_remove_set= base->cookie_remove_set || add->cookie_remove_set;
+	new->query_paramter_name = (add->query_paramter_name_set == 0) ? base->query_paramter_name : add->query_paramter_name;
+	new->query_paramter_name_set= base->query_paramter_name_set || add->query_paramter_name_set;
+	new->query_paramter_remove = (add->query_paramter_remove_set == 0) ? base->query_paramter_remove : add->query_paramter_remove;
+	new->query_paramter_remove_set= base->query_paramter_remove_set || add->query_paramter_remove_set;
 	return (void*)new;
 }
 
@@ -509,15 +513,6 @@ static const char* get_config_value(request_rec *r, jwt_directive directive){
 				return DEFAULT_QUERY_PARAMETER_NAME;
 			}
 			break;
-		case dir_query_parameter_remove:
-			if(dconf->query_parameter_remove_set && dconf->query_parameter_remove){
-				value = dconf->query_parameter_remove;
-			}else if(sconf->query_parameter_remove_set && sconf->query_parameter_remove){
-				value = sconf->query_parameter_remove;
-			}else{
-				return DEFAULT_QUERY_PARAMETER_REMOVE;
-			}
-			break;
 		default:
 			return NULL;
 	}
@@ -563,6 +558,15 @@ static const int get_config_int_value(request_rec *r, jwt_directive directive){
 				value = dconf->cookie_remove;
 			}else if(sconf->cookie_remove_set){
 				value = sconf->cookie_remove;
+			}else{
+				return DEFAULT_COOKIE_REMOVE;
+			}
+			break;
+		case dir_query_parameter_remove:
+			if(dconf->query_parameter_remove_set){
+				value = dconf->query_parameter_remove;
+			}else if(sconf->query_parameter_remove_set){
+				value = sconf->query_parameter_remove;
 			}else{
 				return DEFAULT_COOKIE_REMOVE;
 			}
