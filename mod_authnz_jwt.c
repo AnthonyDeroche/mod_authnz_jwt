@@ -62,6 +62,7 @@
 #define DEFAULT_COOKIE_REMOVE 1
 
 #define DEFAULT_QUERY_PARAMETER_NAME "AuthToken"
+#define DEFAULT_QUERY_PARAMETER_REMOVE 1
 
 #define JSON_DELIVERY "Json"
 #define COOKIE_DELIVERY "Cookie"
@@ -506,6 +507,15 @@ static const char* get_config_value(request_rec *r, jwt_directive directive){
 				value = sconf->query_parameter_name;
 			}else{
 				return DEFAULT_QUERY_PARAMETER_NAME;
+			}
+			break;
+		case dir_query_parameter_remove:
+			if(dconf->query_parameter_remove_set && dconf->query_parameter_remove){
+				value = dconf->query_parameter_remove;
+			}else if(sconf->query_parameter_remove_set && sconf->query_parameter_remove){
+				value = sconf->query_parameter_remove;
+			}else{
+				return DEFAULT_QUERY_PARAMETER_REMOVE;
 			}
 			break;
 		default:
