@@ -1243,15 +1243,15 @@ static int auth_jwt_authn_with_token(request_rec *r){
 			if (query_parameter_remove)
 			{
 				size_t query_len = strlen(r->args);
-				if (query_len == token_range.token_end - token_range.token_start)
+				if (query_len == token_range.end - token_range.begin)
 				{
 					r->args[0] = 0;
 				}
 				else
 				{
 					const char* args_end = r->args + query_len;
-					size_t rest_len = args_end - token_range.token_end;
-					memcpy(token_range.token_start, token_range.token_end + 1, rest_len);
+					size_t rest_len = args_end - token_range.end;
+					memcpy(token_range.begin, token_range.end + 1, rest_len);
 				}
 			}
 		}
