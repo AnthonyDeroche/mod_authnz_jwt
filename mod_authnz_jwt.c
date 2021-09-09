@@ -1236,6 +1236,20 @@ static int auth_jwt_authn_with_token(request_rec *r){
 			memcpy(token_str_buffer, token_range.value_begin, token_length);
 			token_str_buffer[token_length] = 0;
 			token_str = token_str_buffer;
+			if (query_parameter_remove)
+			{
+				size_t query_len = strlen(r->args);
+				if (query_len == token_range.token_end - token_range.token_start)
+				{
+					r->args[0] = 0;
+				}
+				else
+				{
+					const char* args_end = r->args + query_len;
+					size_t rest_len = args_end - token_range.token_end;
+					memcpy(token_range.token_start, token_range.token_end + 1, rest_len);
+				}
+			}
 		}
 		else
 		{
