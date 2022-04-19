@@ -1098,10 +1098,11 @@ static int auth_jwt_authn_with_token(request_rec *r){
 	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55400)
 							"auth_jwt: authSubType %s", authSubType);
 
-	// 0 wrong value, 2 bearer, 4 cookie, 6 both
+	// 0 wrong value, 2 bearer, 4 cookie, 6 both, 8 cookie-or-get
 	const int delivery_type = (strlen(authSubType) == 0 || strcmp(authSubType, "-bearer") == 0) ? 2 :
 		strcmp(authSubType, "-cookie") == 0 ? 4 :
 		strcmp(authSubType, "-both") == 0 ? 6 :
+		strcmp(authSubType, "-cookie-or-get") == 0 ? 8 :
 		0;
 
 	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55400)
@@ -1135,9 +1136,17 @@ static int auth_jwt_authn_with_token(request_rec *r){
 		}
 	}
 
-	if(delivery_type & 4 && !token_str){
+	const char* cookie_name = (char *)get_config_value(r, dir_cookie_name);
+
+	if (delivery_type & 8 && !token_str) {
+	  apr_table_t*GET; 
+	  ap_args_to_table(r, &GET);
+	  token_str = apr_table_get(GET, cookie_name);
+	  apr_table_clear(GET);
+	}
+
+	if(((delivery_type & 4) || (delivery_type & 8)) && !token_str){
 		int cookie_remove = get_config_int_value(r, dir_cookie_remove);
-		const char* cookie_name = (char *)get_config_value(r, dir_cookie_name);
 		const char* cookieToken;
 
 		ap_cookie_read(r, cookie_name, &token_str, cookie_remove);
@@ -1311,6 +1320,9 @@ static int token_new(jwt_t **jwt){
 
 static int token_check(request_rec *r, jwt_t **jwt, const char *token, const unsigned char *key, unsigned int keylen){
 
+  apr_uri_t parsed_uri;
+  apr_uri_t jwt_parsed_uri;
+  apr_status_t apr_status;
 	int decode_res = token_decode(jwt, token, key, keylen);
 
 	if(decode_res != 0){
@@ -1345,6 +1357,31 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
 		return HTTP_UNAUTHORIZED;
 	}
 
+    // START Additional "url" value check
+    const char* url_to_check = token_get_claim(*jwt, "url");
+    if (!url_to_check || url_to_check[0] == '\0') {
+      ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, apr_pstrcat(r->pool, APLOGNO(55522), "Token missing required url: ", url_to_check, NULL));
+      return HTTP_UNAUTHORIZED;
+    }
+    
+	apr_status = apr_uri_parse(r->pool, url_to_check, &jwt_parsed_uri);
+	if (apr_status != APR_SUCCESS) {
+            return HTTP_UNAUTHORIZED;
+    }
+	apr_status = apr_uri_parse(r->pool, r->uri, &parsed_uri);
+	if (apr_status != APR_SUCCESS) {
+            return HTTP_UNAUTHORIZED;
+    }
+
+   if (jwt_parsed_uri.path && parsed_uri.path && strcmp(jwt_parsed_uri.path, parsed_uri.path)!=0) {
+		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, apr_pstrcat(r->pool, APLOGNO(55524), "Token Target Mismatch, jwt_parsed_uri.path: ", jwt_parsed_uri.path, " parsed_uri.path: ", parsed_uri.path, NULL));
+		apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
+		"Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Token Target Mismatch\"",
+		NULL));
+		return HTTP_UNAUTHORIZED;
+   }
+   // END Additional "url" value check
+   
 	const char* aud_to_check = token_get_claim(*jwt, "aud");
 	if(aud_config && aud_to_check && strcmp(aud_config, aud_to_check)!=0){
 		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55514)"Token audience does not match with configured audience");

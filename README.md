@@ -2,7 +2,11 @@
 
 Authentication module for Apache httpd with JSON web tokens (JWT).
 
-[![Build Status](https://travis-ci.org/AnthonyDeroche/mod_authnz_jwt.svg?branch=master)](https://travis-ci.org/AnthonyDeroche/mod_authnz_jwt)
+Forked From:  https://github.com/AnthonyDeroche/mod_authnz_jwt
+
+Forked Additions:
+* Convert to single URI signing by comparing Request URI to "url" in jwt payload.
+* Support jwt-cookie-or-get AuthType that checks GET and falls back to cookie.
 
 More on JWT : https://jwt.io/
 
@@ -276,7 +280,7 @@ With Cookie:
 ##### AuthType
 * **Description**: Authentication type to allow. `jwt` and `jwt-bearer` will allow only the Authorization header. `jwt-cookie` allows only Cookie usage. `jwt-both` accepts Authorization header and cookie. Cookie value will be ignored if Authorization header is set.
 * **Context**: directory
-* **Possibles values**: jwt, jwt-bearer, jwt-cookie, jwt-both
+* **Possibles values**: jwt, jwt-bearer, jwt-cookie, jwt-both, jwt-cookie-or-get
 
 ##### AuthJWTProvider 
 
