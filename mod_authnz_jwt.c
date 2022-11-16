@@ -1178,6 +1178,36 @@ static int auth_jwt_authn_with_token(request_rec *r){
 							"auth_jwt authn: algorithm found is %s", found_alg);
 		const char* attribute_username = (const char*)get_config_value(r, dir_attribute_username);
 		char* maybe_user = (char *)token_get_claim(token, attribute_username);
+
+		json_t *val;
+		char *objkey;
+		json_t *obj = token_get_claim_json(r, token, NULL);
+		if(json_is_object(obj)) {
+			void *iter = json_object_iter(obj);
+			while(iter) {
+				val = json_object_iter_value(iter);
+				char key[strlen(objkey) + 5];
+				strcpy(key, "JWT_");
+				objkey = (char*)json_object_iter_key(iter);
+				strcat(key, objkey);
+				if(json_is_string(val)) {
+					apr_table_set(r->subprocess_env, key, json_string_value(val));
+				} else if(json_is_integer(val)) {
+					int num = json_integer_value(val);
+					int len = snprintf(NULL, 0,"%d",num);
+					char buf[len];
+					sprintf(buf, "%d",num);
+					apr_table_set(r->subprocess_env, key, buf);
+				} else if(json_is_real(val)) {
+					double num = json_real_value(val);
+					int len = snprintf(NULL, 0,"%d",num);
+					char buf[len];
+					sprintf(buf, "%f",num);
+					apr_table_set(r->subprocess_env, key, buf);
+				}
+				iter = json_object_iter_next(obj, iter);
+			}
+		}
 		/*
 		 * User claim claim is optional
 		if(maybe_user == NULL){
