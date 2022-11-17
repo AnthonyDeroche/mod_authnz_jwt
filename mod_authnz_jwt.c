@@ -1180,30 +1180,54 @@ static int auth_jwt_authn_with_token(request_rec *r){
 		char* maybe_user = (char *)token_get_claim(token, attribute_username);
 
 		json_t *val;
-		char *objkey;
 		json_t *obj = token_get_claim_json(r, token, NULL);
 		if(json_is_object(obj)) {
 			void *iter = json_object_iter(obj);
 			while(iter) {
 				val = json_object_iter_value(iter);
+				const char *objkey = json_object_iter_key(iter);
 				char key[strlen(objkey) + 5];
 				strcpy(key, "JWT_");
-				objkey = (char*)json_object_iter_key(iter);
 				strcat(key, objkey);
 				if(json_is_string(val)) {
-					apr_table_set(r->subprocess_env, key, json_string_value(val));
+					const char *value = json_string_value(val);
+
+					char cookie[strlen(objkey) + strlen(value) + 7 + 1];
+					strcpy(cookie, objkey);
+					strcat(cookie, "=");
+					strcat(cookie, value);
+					strcat(cookie, ";Path=/");
+					apr_table_add(r->headers_in, "Cookie", cookie);
+
+					apr_table_set(r->subprocess_env, key, value);
 				} else if(json_is_integer(val)) {
 					int num = json_integer_value(val);
-					int len = snprintf(NULL, 0,"%d",num);
-					char buf[len];
-					sprintf(buf, "%d",num);
-					apr_table_set(r->subprocess_env, key, buf);
+					int len = snprintf(NULL, 0, "%d", num);
+					char value[len + 1];
+					sprintf(value, "%d", num);
+
+					char cookie[strlen(objkey) + strlen(value) + 7 + 1];
+					strcpy(cookie, objkey);
+					strcat(cookie, "=");
+					strcat(cookie, value);
+					strcat(cookie, ";Path=/");
+					apr_table_add(r->headers_in, "Cookie", cookie);
+
+					apr_table_set(r->subprocess_env, key, value);
 				} else if(json_is_real(val)) {
 					double num = json_real_value(val);
-					int len = snprintf(NULL, 0,"%d",num);
-					char buf[len];
-					sprintf(buf, "%f",num);
-					apr_table_set(r->subprocess_env, key, buf);
+					int len = snprintf(NULL, 0, "%d", num);
+					char value[len + 1];
+					sprintf(value, "%f", num);
+
+					char cookie[strlen(objkey) + strlen(value) + 7 + 1];
+					strcpy(cookie, objkey);
+					strcat(cookie, "=");
+					strcat(cookie, value);
+					strcat(cookie, ";Path=/");
+					apr_table_add(r->headers_in, "Cookie", cookie);
+
+					apr_table_set(r->subprocess_env, key, value);
 				}
 				iter = json_object_iter_next(obj, iter);
 			}
