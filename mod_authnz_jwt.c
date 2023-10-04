@@ -1221,12 +1221,12 @@ static int auth_jwt_authn_with_token(request_rec *r){
 					const char *value = json_string_value(val);
 
 					char cookie[strlen(cookie_old) + strlen(objkey) + strlen(value) + 10];
-					strcpy(cookie, cookie_old);
-					strcat(cookie, "; ");
-					strcat(cookie, objkey);
+					strcpy(cookie, objkey);
 					strcat(cookie, "=");
 					strcat(cookie, value);
 					strcat(cookie, ";Path=/");
+					strcat(cookie, "; ");
+					strcat(cookie, cookie_old);
 					apr_table_set(r->headers_in, "Cookie", cookie);
 
 					apr_table_set(r->subprocess_env, key, value);
@@ -1237,12 +1237,12 @@ static int auth_jwt_authn_with_token(request_rec *r){
 					sprintf(value, "%d", num);
 
 					char cookie[strlen(cookie_old) + strlen(objkey) + strlen(value) + 10];
-					strcpy(cookie, cookie_old);
-					strcat(cookie, "; ");
-					strcat(cookie, objkey);
+					strcpy(cookie, objkey);
 					strcat(cookie, "=");
 					strcat(cookie, value);
 					strcat(cookie, ";Path=/");
+					strcat(cookie, "; ");
+					strcat(cookie, cookie_old);
 					apr_table_set(r->headers_in, "Cookie", cookie);
 
 					apr_table_set(r->subprocess_env, key, value);
@@ -1253,12 +1253,12 @@ static int auth_jwt_authn_with_token(request_rec *r){
 					sprintf(value, "%f", num);
 
 					char cookie[strlen(cookie_old) + strlen(objkey) + strlen(value) + 10];
-					strcpy(cookie, cookie_old);
-					strcat(cookie, "; ");
-					strcat(cookie, objkey);
+					strcpy(cookie, objkey);
 					strcat(cookie, "=");
 					strcat(cookie, value);
 					strcat(cookie, ";Path=/");
+					strcat(cookie, "; ");
+					strcat(cookie, cookie_old);
 					apr_table_set(r->headers_in, "Cookie", cookie);
 
 					apr_table_set(r->subprocess_env, key, value);
