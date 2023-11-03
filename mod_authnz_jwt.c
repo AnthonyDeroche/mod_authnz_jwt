@@ -124,6 +124,9 @@ typedef struct {
 
 	char *dir;
 
+	const char* fail_redirect;
+	int fail_redirect_set;
+
 } auth_jwt_config_rec;
 
 typedef enum { 
@@ -144,6 +147,7 @@ typedef enum {
 	dir_cookie_name,
 	dir_cookie_attr,
 	dir_cookie_remove,
+	dir_fail_redirect
 } jwt_directive;
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  FUNCTIONS HEADERS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
@@ -239,6 +243,8 @@ static const command_rec auth_jwt_cmds[] =
 					"semi-colon separated attributes for cookie when using cookie delivery. default: "DEFAULT_COOKIE_ATTR),
 	AP_INIT_TAKE1("AuthJWTRemoveCookie", set_jwt_int_param, (void *)dir_cookie_remove, RSRC_CONF|OR_AUTHCFG,
 					"Remove cookie from the headers, and thus keep it private from the backend. default: 1"),
+	AP_INIT_TAKE1("AuthJWTFailRedirect", set_jwt_param, (void *)dir_fail_redirect, RSRC_CONF|OR_AUTHCFG,
+					"The URL to redirect to if the token is not valid"),
 	{NULL}
 };
 
@@ -266,6 +272,7 @@ static void *create_auth_jwt_dir_config(apr_pool_t *p, char *d){
 	conf->cookie_name_set=0;
 	conf->cookie_attr_set=0;
 	conf->cookie_remove_set=0;
+	conf->fail_redirect_set=0;
 
 	return (void *)conf;
 }
@@ -292,6 +299,7 @@ static void *create_auth_jwt_config(apr_pool_t * p, server_rec *s){
 	conf->cookie_name_set=0;
 	conf->cookie_attr_set=0;
 	conf->cookie_remove_set=0;
+	conf->fail_redirect_set=0;
 
 	return (void *)conf;
 }
@@ -338,6 +346,8 @@ static void* merge_auth_jwt_dir_config(apr_pool_t *p, void* basev, void* addv){
 	new->cookie_attr_set= base->cookie_attr_set || add->cookie_attr_set;
 	new->cookie_remove = (add->cookie_remove_set == 0) ? base->cookie_remove : add->cookie_remove;
 	new->cookie_remove_set= base->cookie_remove_set || add->cookie_remove_set;
+	new->fail_redirect = (add->fail_redirect_set == 0) ? base->fail_redirect : add->fail_redirect;
+	new->fail_redirect_set = base->fail_redirect_set || add->fail_redirect_set;
 	return (void*)new;
 }
 
@@ -421,7 +431,7 @@ static const char* get_config_value(request_rec *r, jwt_directive directive){
 				return NULL;
 			}
 			break;
- 		case dir_form_username:
+		case dir_form_username:
 			if(dconf->form_username_set && dconf->form_username){
 				value = dconf->form_username;
 			}else if(sconf->form_username_set && sconf->form_username){
@@ -484,6 +494,15 @@ static const char* get_config_value(request_rec *r, jwt_directive directive){
 				return DEFAULT_COOKIE_ATTR;
 			}
 			break;
+		case dir_fail_redirect:
+			if(dconf->fail_redirect_set && dconf->fail_redirect){
+				value = dconf->fail_redirect;
+			}else if(sconf->fail_redirect_set && sconf->fail_redirect){
+				value = sconf->fail_redirect;
+			}else{
+				return NULL;
+			}
+			break;
 		default:
 			return NULL;
 	}
@@ -542,7 +561,7 @@ static const int get_config_int_value(request_rec *r, jwt_directive directive){
 
 static void register_hooks(apr_pool_t * p){
 	ap_hook_handler(auth_jwt_login_handler, NULL, NULL, APR_HOOK_MIDDLE);
- 	ap_hook_check_authn(auth_jwt_authn_with_token, NULL, NULL, APR_HOOK_MIDDLE, AP_AUTH_INTERNAL_PER_CONF);
+	ap_hook_check_authn(auth_jwt_authn_with_token, NULL, NULL, APR_HOOK_MIDDLE, AP_AUTH_INTERNAL_PER_CONF);
 	ap_register_auth_provider(p, AUTHZ_PROVIDER_GROUP, "jwt-claim", AUTHZ_PROVIDER_VERSION, &authz_jwtclaim_provider, AP_AUTH_INTERNAL_PER_CONF);
 	ap_register_auth_provider(p, AUTHZ_PROVIDER_GROUP, "jwt-claim-array", AUTHZ_PROVIDER_VERSION, &authz_jwtclaimarray_provider, AP_AUTH_INTERNAL_PER_CONF);
 }
@@ -653,6 +672,10 @@ static const char *set_jwt_param(cmd_parms * cmd, void* config, const char* valu
 		case dir_cookie_attr:
 			conf->cookie_attr = value;
 			conf->cookie_attr_set = 1;
+		break;
+		case dir_fail_redirect:
+			conf->fail_redirect = value;
+			conf->fail_redirect_set = 1;
 		break;
 	}
 
@@ -1149,8 +1172,12 @@ static int auth_jwt_authn_with_token(request_rec *r){
 	}
 
 	if(!token_str) {
+		const char* fail_redirect = (char *)get_config_value(r, dir_fail_redirect);
 		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "%s%s", logCode, logStr);
 		apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool, "realm=\"", ap_auth_name(r),"\"", errorStr, NULL));
+		if(fail_redirect) {
+			apr_table_setn(r->err_headers_out, "Location", fail_redirect);
+		}
 		return HTTP_UNAUTHORIZED;
 	}
 
@@ -1178,6 +1205,67 @@ static int auth_jwt_authn_with_token(request_rec *r){
 							"auth_jwt authn: algorithm found is %s", found_alg);
 		const char* attribute_username = (const char*)get_config_value(r, dir_attribute_username);
 		char* maybe_user = (char *)token_get_claim(token, attribute_username);
+
+		json_t *val;
+		json_t *obj = token_get_claim_json(r, token, NULL);
+		if(json_is_object(obj)) {
+			void *iter = json_object_iter(obj);
+			while(iter) {
+				val = json_object_iter_value(iter);
+				const char *cookie_old = apr_table_get(r->headers_in, "Cookie");
+				const char *objkey = json_object_iter_key(iter);
+				char key[strlen(objkey) + 5];
+				strcpy(key, "JWT_");
+				strcat(key, objkey);
+				if(json_is_string(val)) {
+					const char *value = json_string_value(val);
+
+					char cookie[strlen(cookie_old) + strlen(objkey) + strlen(value) + 10];
+					strcpy(cookie, objkey);
+					strcat(cookie, "=");
+					strcat(cookie, value);
+					strcat(cookie, ";Path=/");
+					strcat(cookie, "; ");
+					strcat(cookie, cookie_old);
+					apr_table_set(r->headers_in, "Cookie", cookie);
+
+					apr_table_set(r->subprocess_env, key, value);
+				} else if(json_is_integer(val)) {
+					int num = json_integer_value(val);
+					int len = snprintf(NULL, 0, "%d", num);
+					char value[len + 1];
+					sprintf(value, "%d", num);
+
+					char cookie[strlen(cookie_old) + strlen(objkey) + strlen(value) + 10];
+					strcpy(cookie, objkey);
+					strcat(cookie, "=");
+					strcat(cookie, value);
+					strcat(cookie, ";Path=/");
+					strcat(cookie, "; ");
+					strcat(cookie, cookie_old);
+					apr_table_set(r->headers_in, "Cookie", cookie);
+
+					apr_table_set(r->subprocess_env, key, value);
+				} else if(json_is_real(val)) {
+					double num = json_real_value(val);
+					int len = snprintf(NULL, 0, "%d", num);
+					char value[len + 1];
+					sprintf(value, "%f", num);
+
+					char cookie[strlen(cookie_old) + strlen(objkey) + strlen(value) + 10];
+					strcpy(cookie, objkey);
+					strcat(cookie, "=");
+					strcat(cookie, value);
+					strcat(cookie, ";Path=/");
+					strcat(cookie, "; ");
+					strcat(cookie, cookie_old);
+					apr_table_set(r->headers_in, "Cookie", cookie);
+
+					apr_table_set(r->subprocess_env, key, value);
+				}
+				iter = json_object_iter_next(obj, iter);
+			}
+		}
 		/*
 		 * User claim claim is optional
 		if(maybe_user == NULL){
@@ -1305,19 +1393,23 @@ static void get_decode_key(request_rec *r, unsigned char* key, unsigned int* key
 }
 
 static int token_new(jwt_t **jwt){
- 	return jwt_new(jwt);
+	return jwt_new(jwt);
 }
 
 
 static int token_check(request_rec *r, jwt_t **jwt, const char *token, const unsigned char *key, unsigned int keylen){
 
 	int decode_res = token_decode(jwt, token, key, keylen);
+	const char* fail_redirect = (char *)get_config_value(r, dir_fail_redirect);
 
 	if(decode_res != 0){
 		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55512)"Decoding process has failed, token is either malformed or signature is invalid");
 		apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
 		"Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Token is malformed or signature is invalid\"",
 		NULL));
+		if(fail_redirect) {
+			apr_table_setn(r->err_headers_out, "Location", fail_redirect);
+		}
 		return HTTP_UNAUTHORIZED;
 	}
 
@@ -1329,6 +1421,9 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
 		apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
 		"Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Token is malformed\"",
 		NULL));
+		if(fail_redirect) {
+			apr_table_setn(r->err_headers_out, "Location", fail_redirect);
+		}
 		return HTTP_UNAUTHORIZED;
 	}
 
@@ -1342,6 +1437,9 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
 		apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
 		"Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Issuer is not valid\"",
 		NULL));
+		if(fail_redirect) {
+			apr_table_setn(r->err_headers_out, "Location", fail_redirect);
+		}
 		return HTTP_UNAUTHORIZED;
 	}
 
@@ -1351,6 +1449,9 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
 		apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
 		"Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Audience is not valid\"",
 		NULL));
+		if(fail_redirect) {
+			apr_table_setn(r->err_headers_out, "Location", fail_redirect);
+		}
 		return HTTP_UNAUTHORIZED;
 	}
 
@@ -1364,6 +1465,9 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
 			apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
 			"Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Token expired\"",
 			NULL));
+			if(fail_redirect) {
+				apr_table_setn(r->err_headers_out, "Location", fail_redirect);
+			}
 			return HTTP_UNAUTHORIZED;
 		}
 	}
@@ -1378,6 +1482,9 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
 			apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
 			"Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Token can't be processed now due to nbf field\"",
 			NULL));
+			if(fail_redirect) {
+				apr_table_setn(r->err_headers_out, "Location", fail_redirect);
+			}
 			return HTTP_UNAUTHORIZED;
 		}
 	}
@@ -1390,6 +1497,9 @@ static int token_check(request_rec *r, jwt_t **jwt, const char *token, const uns
 		apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool,
 		"Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Unsupported Signature Algorithm\"",
 		NULL));
+		if(fail_redirect) {
+			apr_table_setn(r->err_headers_out, "Location", fail_redirect);
+		}
 		return HTTP_UNAUTHORIZED;
 	}
 	return 	OK;
